@@ -13,6 +13,6 @@ parser =
 
 main :: IO ()
 main = do
-  (dir, year) <- options "Greeting script" parser
+  (dir, year) <- options "Giacenza media" parser
   print <=< giacenza (encodeString dir) $ Year year
 
