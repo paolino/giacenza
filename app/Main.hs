@@ -4,6 +4,7 @@ module Main where
 
 import Lib
 import Turtle
+import Streaming
 import Protolude hiding (FilePath)
 
 parser :: Parser (FilePath, Integer)
@@ -14,5 +15,7 @@ parser =
 main :: IO ()
 main = do
   (dir, year) <- options "Giacenza media" parser
-  print <=< giacenza (encodeString dir) $ Year year
+  v :> n <- giacenza (encodeString dir) $ Year year
+  print n 
+  print v 
 

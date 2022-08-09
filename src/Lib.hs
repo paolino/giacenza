@@ -1,17 +1,18 @@
-{-# LANGUAGE BangPatterns #-}
+
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ImportQualifiedPost #-}
-{-# LANGUAGE LambdaCase #-}
+
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PatternSynonyms #-}
+
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE NoImplicitPrelude, NoMonomorphismRestriction #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# OPTIONS_GHC -Wunused-imports #-}
+
 
 module Lib where
 
@@ -48,7 +49,7 @@ instance FromField Value where
     Value <$> case reads (filter isGood $ toS $ decodeUtf8 b) of
       [(r, _)] -> pure r
       _ -> mzero
-    where 
+    where
     isGood :: Char -> Bool
     isGood x
       | isDigit x = True
@@ -70,33 +71,37 @@ instance FromNamedRecord Movement where
 
 newtype Year = Year Integer deriving (Eq, Show, Num)
 
-giacenza :: FilePath -> Year -> IO Double
-giacenza dir year = fmap unValue $ S.sum_ $ analyzeDir dir year 
+giacenza :: FilePath -> Year -> IO (Of Double Int)
+giacenza dir year = fmap (first unValue) $ S.sum $ analyzeDir dir year
 
-analyzeDir :: FilePath -> Year -> Stream (Of Value) IO ()
+analyzeDir :: FilePath -> Year -> Stream (Of Value) IO Int
 analyzeDir dir year = do
   d <- liftIO $ openDirStream dir
-  analyzeFile year $ S.unfoldr r d
+  analyzeFile year $ S.store S.length_ $ S.store S.print $ S.unfoldr r d
   where
     r :: DirStream -> IO (Either () (FilePath, DirStream))
     r d = do
       mf <- readDirStream d
       pure $ maybe (Left ()) (Right . (,d) . (dir </>)) mf
 
-analyzeFile :: Year -> Stream (Of FilePath) IO () -> Stream (Of Value) IO ()
+analyzeFile :: Year -> Stream (Of FilePath) IO r -> Stream (Of Value) IO r
 analyzeFile year filePaths = S.for filePaths $ \filePath -> do
   r <-
     liftIO $
       runExceptT $
         withBinaryFileContents filePath $
-          S.head_ . S.map snd . S.filter ((== year) . fst)
+          S.print . S.store (S.head_  . S.map snd) . S.filter ((== year) . fst)
+            -- . S.store S.print
             . groupYears
             . foldDays
             . SC.decodeByName
   either
     do panic . show
     do maybe (pure ()) S.yield
-    do r
+    r
+
+logS :: (MonadIO m, Show a) => Stream (Of a) m r -> Stream (Of a) m r
+logS = S.store S.print
 
 foldDays ::
   (Monad m) =>
@@ -108,8 +113,7 @@ foldDays s = do
     $ \(Movement day diff) -> do
       state <- get
       case state of
-        Nothing -> do
-          put $ Just (day, diff)
+        Nothing -> put $ Just (day, diff)
         Just (day', value) -> do
           let value' = value + diff
           put $ Just (day, value')
