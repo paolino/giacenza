@@ -10,11 +10,13 @@ The csv is expected with header and the 2 relevant columns should be
 
 ## Install  
 
-> stack install
+download haskell tools [GHCUp](https://www.haskell.org/ghcup/)
+
+> cabal install --overwrite-policy=always
 
 ## Run 
 
-> giacenza-exe statements 2020
+> giacenza statements 2020
 
 
 
@@ -23,7 +25,7 @@ The csv is expected with header and the 2 relevant columns should be
 
 Giacenza media
 
-Usage: giacenza-exe DIR YEAR
+Usage: giacenza DIR YEAR
 
 Available options:
   -h,--help                Show this help text
