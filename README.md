@@ -16,7 +16,7 @@ download haskell tools [GHCUp](https://www.haskell.org/ghcup/)
 
 ## Run 
 
-> giacenza statements 2020 Data Importo european
+> giacenza statements 2021 Data Importo european
 
 ## Help
 ```
@@ -36,4 +36,6 @@ Available options:
 
 ## TODO
 
-Better error on CSV parsing issues
+- [ ] Better error on CSV parsing issues
+- [ ] Add multi year reporting by merging streams instead of streaming one result per year
+- [ ] Use optionExt to have header and footer on --help
