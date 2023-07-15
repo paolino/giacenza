@@ -16,16 +16,14 @@ download haskell tools [GHCUp](https://www.haskell.org/ghcup/)
 
 ## Run 
 
-> giacenza statements 2020 Data Importo
-
-
+> giacenza statements 2020 Data Importo european
 
 ## Help
 ```
 
 Giacenza media
 
-Usage: giacenza DIR YEAR DATE-NAME AMOUNT-NAME
+Usage: giacenza DIR YEAR DATE-NAME AMOUNT-NAME NUMBER-FORMAT
 
 Available options:
   -h,--help                Show this help text
@@ -33,9 +31,9 @@ Available options:
   YEAR                     The year for the giacenza
   DATE-NAME                The date field name
   AMOUNT-NAME              The amount field name
-
+  NUMBER-FORMAT            The number format, european or american
 ```
 
 ## TODO
 
-Support other number format
+Better error on CSV parsing issues

@@ -3,6 +3,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
@@ -23,6 +24,7 @@ import Data.Attoparsec.ByteString qualified as A
 import Data.Attoparsec.ByteString.Char8 (char, decimal)
 import Data.Csv (Field, FromField (..), NamedRecord, (.:))
 import Data.Csv qualified as CSV
+import Data.HashMap.Strict qualified as HM
 import Data.Streaming.Filesystem
     ( DirStream
     , openDirStream
@@ -53,25 +55,36 @@ import System.FilePath ((</>))
 
 newtype Value = Value {unValue :: Double} deriving (Num, Show, Fractional)
 
-parseValue :: ByteString -> Either String Value
-parseValue = parseOnly $ do
+data NumberFormat = NumberFormat
+    { decimalSeparator :: Char
+    , thousandsSeparator :: Char
+    }
+
+parseValue :: NumberFormat -> ByteString -> Either String Value
+parseValue NumberFormat{..} = parseOnly $ do
     v <- optional $ char '-'
     d <- foldl' (\w t -> w * 1000 + t) 0 <$> euros
-    void $ char ','
+    void $ char decimalSeparator
     c <- decimal @Int
     pure $ Value $ (if isJust v then negate else identity) (fromIntegral d + fromIntegral c / 100)
   where
     euros :: A.Parser [Int]
     euros = do
         d <- decimal
-        r <- optional $ char '.'
+        r <- optional $ char thousandsSeparator
         case r of
             Nothing -> pure [d]
             Just _ -> (d :) <$> euros
-instance FromField Value where
-    parseField b = case parseValue b of
-        Left e -> fail e
-        Right v -> pure v
+
+parseWithEithers :: (t -> Either String b) -> t -> CSV.Parser b
+parseWithEithers p x = case p x of
+    Left e -> fail e
+    Right v -> pure v
+
+parseNR :: (ByteString -> CSV.Parser a) -> NamedRecord -> Field -> CSV.Parser a
+parseNR p nr f = case HM.lookup f nr of
+    Nothing -> fail $ "Field " <> show f <> " not found"
+    Just v -> p v
 
 data Movement = Movement {date :: !Day, amount :: !Value}
     deriving (Show)
@@ -84,26 +97,29 @@ instance FromField Day where
             (parseTimeM False defaultTimeLocale "%Y-%m-%d" (toS $ decodeUtf8 b))
 
 parseNamedRecord'
-    :: ByteString
+    :: NumberFormat
+    -> ByteString
     -> ByteString
     -> NamedRecord
     -> CSV.Parser Movement
-parseNamedRecord' dateField amountField m = Movement <$> m .: dateField <*> m .: amountField
+parseNamedRecord' nf dateField amountField m =
+    Movement <$> m .: dateField <*> parseNR (parseWithEithers $ parseValue nf) m amountField
 
 newtype Year = Year {unYear :: Integer} deriving (Eq, Show, Num)
 
-giacenza :: FilePath -> Field -> Field -> Year -> IO (Of (Value, Value) Int)
-giacenza dir dateField amountField year =
+giacenza :: NumberFormat -> FilePath -> Field -> Field -> Year -> IO (Of (Value, Value) Int)
+giacenza nf dir dateField amountField year =
     foldResults
-        $ analyzeDir dir dateField amountField year
+        $ analyzeDir nf dir dateField amountField year
 
 foldResults :: (Monad m, Num a, Num b) => Stream (Of (a, b)) m r -> m (Of (a, b) r)
 foldResults = S.fold (\(s, n) (s', n') -> (s + s', n + n')) (0, 0) identity
 
-analyzeDir :: FilePath -> Field -> Field -> Year -> Stream (Of (Value, Value)) IO Int
-analyzeDir dir dateField amountField year = do
+analyzeDir :: NumberFormat -> FilePath -> Field -> Field -> Year -> Stream (Of (Value, Value)) IO Int
+analyzeDir nf dir dateField amountField year = do
     d <- liftIO $ openDirStream dir
     analyzeFile
+        nf
         dateField
         amountField
         year
@@ -116,8 +132,8 @@ analyzeDir dir dateField amountField year = do
         mf <- readDirStream d
         pure $ maybe (Left ()) (Right . (,d) . (dir </>)) mf
 
-analyzeFile :: Field -> Field -> Year -> Stream (Of FilePath) IO r -> Stream (Of (Value, Value)) IO r
-analyzeFile dateField amountField year filePaths = S.for filePaths $ \filePath -> do
+analyzeFile :: NumberFormat -> Field -> Field -> Year -> Stream (Of FilePath) IO r -> Stream (Of (Value, Value)) IO r
+analyzeFile nf dateField amountField year filePaths = S.for filePaths $ \filePath -> do
     r :: Either a (Value, Value) <-
         liftIO
             $ runExceptT
@@ -136,7 +152,7 @@ analyzeFile dateField amountField year filePaths = S.for filePaths $ \filePath -
                 . saldos
                 . foldDays (setL L.month 12 $ setL L.day 31 $ fromOrdinalDate (unYear year) 1)
                 . SC.decodeByNameWithP
-                    (parseNamedRecord' dateField amountField)
+                    (parseNamedRecord' nf dateField amountField)
                     defaultDecodeOptions
     either
         do panic . show
