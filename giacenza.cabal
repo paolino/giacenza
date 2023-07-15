@@ -50,6 +50,9 @@ library
     , vector
     , attoparsec
     , streaming-bytestring
+    , time-lens
+    , lens
+    , text
   default-language: Haskell2010
 
 executable giacenza

@@ -6,7 +6,7 @@ module Main where
 
 import Protolude
 
-import Lib (Year (Year), giacenza)
+import Lib (Year (Year), giacenza, showEuro, tabulate, (./.), emptyTabulation)
 import Streaming (Of ((:>)))
 import Turtle
     ( Parser
@@ -27,7 +27,7 @@ parser =
 main :: IO ()
 main = do
     (dir, year, dateField, amountField) <- options "Giacenza media" parser
-    v :> n <-
+    (s,g) :> n <-
         giacenza
             dir
             do encodeUtf8 dateField
@@ -35,5 +35,7 @@ main = do
             $ Year year
     putText "\n--------------------------"
     putText $ show n <> " files analyzed"
-    putText $ "Giacenza media: " <> show v
+    putText $ tabulate $ 15 ./. "Year" $ 15 ./. show year $ emptyTabulation
+    putText $ tabulate $ 15 ./. "Giacenza media:" $ 15 ./.  showEuro g $ emptyTabulation
+    putText $ tabulate $ 15 ./. "Saldo:" $ 15 ./. showEuro s $ emptyTabulation
     
