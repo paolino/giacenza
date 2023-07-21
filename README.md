@@ -4,15 +4,15 @@ Compute _giacenza media_ from some transactions statements as CSV files.
 
 The files should contain the _full_ history of transations, positive and negative.
 
-The csv is expected with header and the 2 relevant columns should be 
-  - ***Date*** The date of the transaction as "%Y-%m-%d"
-  - ***Amount*** The amount moved (positive is incoming), comma is decimal separator , dot as thousands separator
+The csv is expected with header 2 relevant columns have to be there, their name must be specified as arguments
+  - ***date*** The date of the transaction as "%Y-%m-%d" (i.e. 1970-10-22)
+  - ***amount*** The amount moved (positive is incoming), the format must be specified as argument
 
 ## Install  
 
-download haskell tools [GHCUp](https://www.haskell.org/ghcup/)
-
-> cabal install --overwrite-policy=always
+- download haskell tools [GHCUp](https://www.haskell.org/ghcup/)
+- fire `ghcup tui` and select ghc-9.8.2 as compiler
+- > cabal install --overwrite-policy=always
 
 ## Run 
 

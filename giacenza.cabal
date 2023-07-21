@@ -1,8 +1,5 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.34.4.
---
--- see: https://github.com/sol/hpack
 
 name:           giacenza
 version:        0.1.0.0
@@ -25,12 +22,16 @@ source-repository head
 
 library
   exposed-modules:
-      Lib
+      Compute
+      API
+      Form
+      Types
+      Streaming.Servant
   other-modules:
       Paths_giacenza
   hs-source-dirs:
       src
-  ghc-options: -Wall
+  ghc-options: -Werror -O2
   build-depends:
       base >=4.7 && <5
     , bytestring
@@ -54,6 +55,15 @@ library
     , lens
     , text
     , unordered-containers
+    , servant
+    , servant-server
+    , warp
+    , aeson
+    , lucid
+    , http-media
+    , servant-multipart
+    , wai-logger
+    , wai-extra
   default-language: Haskell2010
 
 executable giacenza
@@ -62,7 +72,7 @@ executable giacenza
       Paths_giacenza
   hs-source-dirs:
       app
-  ghc-options: -Wall -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -Wall -threaded -rtsopts -with-rtsopts=-N -O2 -Werror
   build-depends:
       base >=4.7 && <5
     , bytestring

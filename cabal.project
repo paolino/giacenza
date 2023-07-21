@@ -3,4 +3,8 @@ packages: .
 source-repository-package
     type: git
     location: https://github.com/paolino/streaming-cassava
-    tag: b7d76251bc1918957ec78d442fa9e4c8e7227c44
+    tag:  a6ae5b03c6b2924d2a3c672fd666474aa0023f45
+source-repository-package
+    type: git
+    location: https://github.com/paolino/streaming-with
+    tag:  a510193b661737321d8cf51923a28076f7c6f17f
