@@ -25,7 +25,7 @@ import Compute
     )
 import Data.Aeson (ToJSON (..), object)
 import Data.Map.Strict qualified as Map
-import Data.String (String)
+import Data.String (String, IsString (..))
 import Form
     ( Feedback (..)
     , HTML
@@ -37,7 +37,7 @@ import Network.Wai.Handler.Warp
     ( defaultSettings
     , runSettings
     , setLogger
-    , setPort
+    , setPort, setHost
     )
 import Network.Wai.Logger (withStdoutLogger)
 import Network.Wai.Parse (defaultParseRequestBodyOptions, setMaxRequestFileSize)
@@ -197,9 +197,12 @@ app =
      in
         serveWithContext myApi context server
 
-main :: IO ()
-main = withStdoutLogger $ \aplogger -> do
-    let settings = setPort 8_080 $ setLogger aplogger defaultSettings
+main :: Int -> String -> IO ()
+main port host = withStdoutLogger $ \aplogger -> do
+    let settings 
+            = setPort port 
+            $ setHost (fromString host)
+            $ setLogger aplogger defaultSettings
     runSettings settings app
 
 instance FromHttpApiData NumberFormatKnown where

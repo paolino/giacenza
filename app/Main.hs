@@ -2,11 +2,10 @@
 {-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE NoImplicitPrelude #-}
-{-# LANGUAGE TypeApplications #-}
 
 module Main where
 
-import API (parseNumberFormat)
+import API (parseNumberFormat, main)
 import Compute
     ( program
     , showEuro
@@ -18,7 +17,7 @@ import Turtle
     , arg
     , argPath
     , argText
-    , options
+    , options, subcommand, argInt
     )
 import Types
     ( Config (Config)
@@ -29,6 +28,8 @@ import Types
     , Year (..)
     )
 import Data.String (String)
+
+
 
 parser :: Parser (FilePath, Text, Text, NumberFormatKnown)
 parser =
@@ -41,19 +42,33 @@ parser =
             "number-format"
             "The number format, european or american"
 
+parserServe :: Parser (Text, Int)
+parserServe = subcommand "serve" "Start the web server" 
+    $
+        (,)
+            <$> argText "host" "The host to bind to"
+            <*> argInt "port" "The port to bind to"
+    
+
 main :: IO ()
 main = do
-    (file, dateField, amountField, numberFormat) <- options "Giacenza media" parser
-    r <- runExceptT $ program (Config numberFormat dateField amountField) file
-    case r of
-        Left e -> print e
-        Right (Result m) -> sequence_ $ do
-            (Year year, (Saldo s, Giacenza g)) <- Map.assocs m
-            pure $ do
-                putText "\n--------------------------"
-                putText $ tabulate $ 15 ./. "Year" $ 15 ./. show year $ emptyTabulation
-                putText $ tabulate $ 15 ./. "Giacenza media:" $ 15 ./. showEuro g $ emptyTabulation
-                putText $ tabulate $ 15 ./. "Saldo:" $ 15 ./. showEuro s $ emptyTabulation
+    os    <- options "Giacenza media" (fmap Left parserServe <|> fmap Right parser)
+    
+    case os of 
+        Right (file, dateField, amountField, numberFormat) -> do 
+            r <- runExceptT $ program (Config numberFormat dateField amountField) file
+            case r of
+                Left e -> print e
+                Right (Result m) -> sequence_ $ do
+                    (Year year, (Saldo s, Giacenza g)) <- Map.assocs m
+                    pure $ do
+                        putText "\n--------------------------"
+                        putText $ tabulate $ 15 ./. "Year" $ 15 ./. show year $ emptyTabulation
+                        putText $ tabulate $ 15 ./. "Giacenza media:" $ 15 ./. showEuro g $ emptyTabulation
+                        putText $ tabulate $ 15 ./. "Saldo:" $ 15 ./. showEuro s $ emptyTabulation
+        Left (host, port) -> do
+            putText $ "Starting server on " <> host <> ":" <> show port
+            API.main port $ toS host 
 
 newtype Tabulation = Tabulation {unTabulation :: [(Int, Text)]}
 
