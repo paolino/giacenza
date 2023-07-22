@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-import Lib (NumberFormat (NumberFormat), parseValue)
+import Types (NumberFormat (NumberFormat), parseValue)
 import Test.Hspec (describe, hspec, it, shouldBe)
 
 main :: IO ()
