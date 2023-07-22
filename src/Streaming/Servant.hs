@@ -13,11 +13,12 @@ import Servant.API.Stream
     , SourceIO
     , ToSourceIO (..)
     )
-import qualified Servant.Types.SourceT as S
+import Servant.Types.SourceT qualified as S
 import Streaming (Of ((:>)))
 import Streaming.ByteString (ByteStream)
 import Streaming.ByteString.Char8 (fromChunks)
 import Streaming.Internal (Stream (..))
+import Prelude
 
 class StreamToSourceIO m where
     streamToSourceIO :: Stream (Of b) m () -> SourceIO b

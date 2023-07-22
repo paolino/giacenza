@@ -1,17 +1,3 @@
-{-# LANGUAGE BlockArguments #-}
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE ImportQualifiedPost #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE NoImplicitPrelude #-}
-{-# LANGUAGE NoMonomorphismRestriction #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# OPTIONS_GHC -Wunused-imports #-}
 
@@ -68,7 +54,9 @@ parseValue NumberFormat{..} = parseOnly $ do
     d <- foldl' (\w t -> w * 1000 + t) 0 <$> euros
     void $ char decimalSeparator
     c <- decimal @Int
-    pure $ Value $ (if isJust v then negate else identity) (fromIntegral d + fromIntegral c / 100)
+    pure
+        $ Value
+        $ (if isJust v then negate else identity) (fromIntegral d + fromIntegral c / 100)
   where
     euros :: A.Parser [Int]
     euros = do
@@ -99,7 +87,7 @@ parseNamedRecord' :: Config -> NamedRecord -> CSV.Parser Movement
 parseNamedRecord' (Config nf (encodeUtf8 -> dateField) (encodeUtf8 -> amountField)) m =
     Movement
         <$> m
-            .: dateField
+        .: dateField
         <*> parseNR (parseWithEithers $ parseValue $ numberFormatOf nf) m amountField
 
 {- giacenza
@@ -109,7 +97,8 @@ parseNamedRecord' (Config nf (encodeUtf8 -> dateField) (encodeUtf8 -> amountFiel
     -> IO (Of (Saldo Value, Giacenza Value) Int)
 giacenza cfg dir year = foldResults $ analyzeDir cfg dir year -}
 
-foldResults :: (Monad m, Num a, Num b) => Stream (Of (a, b)) m r -> m (Of (a, b) r)
+foldResults
+    :: (Monad m, Num a, Num b) => Stream (Of (a, b)) m r -> m (Of (a, b) r)
 foldResults = S.fold (\(s, n) (s', n') -> (s + s', n + n')) (0, 0) identity
 
 analyzeData
@@ -195,10 +184,8 @@ foldDays s = do
                     put $ Just (day, value')
                     forM_ [day' .. pred day] $ \d -> S.yield (d, value)
     maybe
-        (pure ())
-        do
-            \(day, value) ->
-                S.each [(d, value) | d <- [day .. lastDayOfYear day]]
+        do pure ()
+        do \(day, value) -> S.each [(d, value) | d <- [day .. lastDayOfYear day]]
         do last
     pure r
 

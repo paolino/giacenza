@@ -1,5 +1,7 @@
 packages: .
 
+with-compiler: ghc-9.4.5
+
 source-repository-package
     type: git
     location: https://github.com/paolino/streaming-cassava

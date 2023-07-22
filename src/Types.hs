@@ -1,24 +1,10 @@
 {-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE StrictData #-}
-{-# LANGUAGE NoImplicitPrelude #-}
 
 module Types where
 
-import Protolude
-    ( Char
-    , Double
-    , Eq
-    , Fractional
-    , Integer
-    , Map
-    , Num
-    , Ord
-    , Show
-    , Text
-    )
-
+import Data.String (String)
 import Data.Time (Day)
+import Protolude
 
 newtype Value = Value {unValue :: Double}
     deriving (Num, Show, Fractional, Eq)
@@ -37,6 +23,12 @@ data NumberFormat = NumberFormat
     { decimalSeparator :: Char
     , thousandsSeparator :: Char
     }
+
+parseNumberFormat :: Text -> Either String NumberFormatKnown
+parseNumberFormat = \case
+    "european" -> Right European
+    "american" -> Right American
+    _ -> Left "Invalid number format"
 
 data Config = Config
     { numberFormat :: !NumberFormatKnown

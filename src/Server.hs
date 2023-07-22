@@ -1,21 +1,6 @@
-{-# LANGUAGE BlockArguments #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE ImportQualifiedPost #-}
-{-# LANGUAGE InstanceSigs #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE NumericUnderscores #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module API where
-
-import Protolude hiding (Handler)
+module Server (runServer) where
 
 import Compute
     ( analyzeData
@@ -26,13 +11,6 @@ import Compute
 import Data.Aeson (ToJSON (..), object)
 import Data.Map.Strict qualified as Map
 import Data.String (IsString (..), String)
-import Form
-    ( Feedback (..)
-    , HTML
-    , Page (..)
-    , RawHtml
-    , page
-    )
 import Network.Wai.Handler.Warp
     ( defaultSettings
     , runSettings
@@ -42,7 +20,21 @@ import Network.Wai.Handler.Warp
     )
 import Network.Wai.Logger (withStdoutLogger)
 import Network.Wai.Parse (defaultParseRequestBodyOptions, setMaxRequestFileSize)
-import Servant (Context (..), FromHttpApiData (..), serveWithContext, (:<|>) (..), (:>))
+import Pages.Page qualified as Page
+import Pages.Types
+    ( Feedback (..)
+    , HTML
+    , Page (..)
+    , RawHtml
+    )
+import Protolude hiding (Handler)
+import Servant
+    ( Context (..)
+    , FromHttpApiData (..)
+    , serveWithContext
+    , (:<|>) (..)
+    , (:>)
+    )
 import Servant.API
     ( Get
     , JSON
@@ -64,7 +56,13 @@ import Servant.Multipart
     , lookupFile
     , lookupInput
     )
-import Servant.Server (Application, Handler (..), Server, ServerError (..), err406)
+import Servant.Server
+    ( Application
+    , Handler (..)
+    , Server
+    , ServerError (..)
+    , err406
+    )
 import Streaming (MFunctor (hoist))
 import Streaming.ByteString (ByteStream)
 import Streaming.Cassava (CsvParseException)
@@ -77,6 +75,7 @@ import Types
     , Saldo (Saldo)
     , Value (Value)
     , Year (Year)
+    , parseNumberFormat
     )
 
 type API =
@@ -96,10 +95,6 @@ type API =
             :> Post '[HTML] RawHtml
         :<|> Get '[HTML] RawHtml
         :<|> "about" :> Get '[HTML] RawHtml
-
--- MultipartData consists in textual inputs,
--- accessible through its "inputs" field, as well
--- as files, accessible through its "files" field.
 
 instance ToJSON Result where
     toJSON (Result m) = toJSON $ do
@@ -121,6 +116,7 @@ data GiacenzaInput = GiacenzaInput
     , clientFilename :: Text
     , path :: FilePath
     }
+
 instance FromMultipart Tmp GiacenzaInput where
     fromMultipart :: MultipartData Tmp -> Either String GiacenzaInput
     fromMultipart multipartData =
@@ -135,23 +131,14 @@ instance FromMultipart Tmp GiacenzaInput where
             <*> do
                 fdPayload <$> lookupFile "filename" multipartData
 
-parseNumberFormat :: Text -> Either String NumberFormatKnown
-parseNumberFormat = \case
-    "european" -> Right European
-    "american" -> Right American
-    _ -> Left "Invalid number format"
-
-parseYear :: Text -> Either String Year
-parseYear = fmap Year . readEither . toS
-
 server :: Text -> Server API
 server prefix =
     giacenza
         :<|> form
-        :<|> getForm prefix
-        :<|> pure (page About)
+        :<|> getForm
+        :<|> pure (page' About)
   where
-    page = Form.page prefix
+    page' = Page.page prefix
     giacenza dateField amountField numberFormat body =
         Handler
             $ withExceptT convertCsvParseException
@@ -170,10 +157,10 @@ server prefix =
                     collectResult
         pure
             $ case result of
-                Right m -> page $ Positive Feedback{..} m
-                Left exc -> page $ Negative Feedback{..} $ show exc
+                Right m -> page' $ Positive Feedback{..} m
+                Left exc -> page' $ Negative Feedback{..} $ show exc
 
-    getForm prefix = pure $ page Home
+    getForm = pure $ page' Home
 
 convertCsvParseException :: CsvParseException -> ServerError
 convertCsvParseException exc = err406{errBody = "CSV parse error:" <> show exc}
@@ -196,11 +183,15 @@ app prefix =
                         defaultParseRequestBodyOptions
                 }
         context = multipartOpts :. EmptyContext
-    in
+     in
         serveWithContext myApi context $ server prefix
 
-main :: Text -> Int -> String -> IO ()
-main prefix port host = withStdoutLogger $ \aplogger -> do
+runServer 
+    :: Text -- ^ prefix
+    -> Int -- ^ port
+    -> String -- ^ host
+    -> IO ()
+runServer prefix port host = withStdoutLogger $ \aplogger -> do
     let settings =
             setPort port
                 $ setHost (fromString host)

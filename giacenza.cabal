@@ -3,11 +3,11 @@ cabal-version: 1.12
 
 name:           giacenza
 version:        0.1.0.0
-description:    Please see the README on GitHub at <https://github.com/githubuser/giacenza#readme>
-homepage:       https://github.com/githubuser/giacenza#readme
-bug-reports:    https://github.com/githubuser/giacenza/issues
+description:    Please see the README on GitHub at <https://github.com/paolino/giacenza#readme>
+homepage:       https://github.com/paolino/giacenza#readme
+bug-reports:    https://github.com/paolino/giacenza/issues
 author:         Author name here
-maintainer:     example@example.com
+maintainer:     paolo.veronelli@gmail.com
 copyright:      2022 Author name here
 license:        BSD3
 license-file:   LICENSE
@@ -18,52 +18,81 @@ extra-source-files:
 
 source-repository head
   type: git
-  location: https://github.com/githubuser/giacenza
+  location: https://github.com/paolino/giacenza
 
 library
+  default-extensions: 
+    BlockArguments
+    DataKinds
+    DerivingStrategies
+    FlexibleContexts
+    FlexibleInstances
+    GADTs
+    GeneralizedNewtypeDeriving
+    ImportQualifiedPost
+    InstanceSigs
+    LambdaCase
+    MultiParamTypeClasses
+    NoImplicitPrelude
+    NumericUnderscores
+    OverloadedStrings
+    RecordWildCards
+    ScopedTypeVariables
+    TupleSections
+    TypeApplications
+    TypeFamilies
+    TypeOperators
+    ViewPatterns
+
+
   exposed-modules:
       Compute
-      API
-      Form
-      Types
+      Configuration
+      Pages.About
+      Pages.Form
+      Pages.Page
+      Pages.Result
+      Pages.Types
+      Server
       Streaming.Servant
+      Types
   other-modules:
       Paths_giacenza
   hs-source-dirs:
       src
-  ghc-options: -Werror -O2
+  ghc-options: -Werror -O2 -Wall
   build-depends:
       base >=4.7 && <5
+    , aeson
+    , attoparsec
     , bytestring
     , cassava
     , containers
     , filepath
     , foldl
+    , http-media
+    , lens
+    , lucid
     , mtl
     , protolude
+    , servant
+    , servant-multipart
+    , servant-server
     , streaming
+    , streaming-bytestring
     , streaming-cassava
     , streaming-commons
     , streaming-nonempty
     , streaming-with
-    , time
-    , turtle
-    , vector
-    , attoparsec
-    , streaming-bytestring
-    , time-lens
-    , lens
     , text
+    , time
+    , time-lens
+    , turtle
     , unordered-containers
-    , servant
-    , servant-server
-    , warp
-    , aeson
-    , lucid
-    , http-media
-    , servant-multipart
-    , wai-logger
+    , vector
     , wai-extra
+    , wai-logger
+    , warp
   default-language: Haskell2010
 
 executable giacenza
@@ -109,6 +138,8 @@ test-suite giacenza-test
     , filepath
     , foldl
     , giacenza
+    , hspec
+    , interpolate
     , mtl
     , protolude
     , streaming
@@ -119,6 +150,4 @@ test-suite giacenza-test
     , time
     , turtle
     , vector
-    , hspec
-    , interpolate
   default-language: Haskell2010
