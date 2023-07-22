@@ -1,37 +1,38 @@
-# giacenza media
+# giacenza media (balance average)
 
-Compute _giacenza media_ from some transactions statements as CSV files.
+Compute the _balance average_ from the bank transaction statements as a CSV file.
 
 The files should contain the _full_ history of transations, positive and negative.
 
-The csv is expected with header 2 relevant columns have to be there, their name must be specified as arguments
-  - ***date*** The date of the transaction as "%Y-%m-%d" (i.e. 1970-10-22)
-  - ***amount*** The amount moved (positive is incoming), the format must be specified as argument
+The csv is expected to have 2 relevant column
+  - ***Date*** The date of the transaction as "%Y-%m-%d" (i.e. 1970-10-22)
+  - ***Amount*** The amount moved (positive is incoming), the format must be specified as argument
 
-## Install  
+Name of columns and number format can be specified at request time.
+
+## Build from source
 
 - download haskell tools [GHCUp](https://www.haskell.org/ghcup/)
-- fire `ghcup tui` and select ghc-9.8.2 as compiler
-- > cabal install --overwrite-policy=always
+- fire `ghcup tui` and select ghc-9.4.5 as compiler
+- > cabal install
 
-## Run 
+## Run as a web server container from dockerhub
 
-> giacenza statements 2021 Data Importo european
+- need docker support from your operating system
+- > docker run -p 8080:8080 paolino/giacenza giacenza serve
 
-## Help
+## Help from the commandline
 ```
 
-Giacenza media
-
-Usage: giacenza DIR YEAR DATE-NAME AMOUNT-NAME NUMBER-FORMAT
+Usage: giacenza (serve | CSV DATE-NAME AMOUNT-NAME NUMBER-FORMAT)
 
 Available options:
   -h,--help                Show this help text
-  DIR                      The directory with the statements
-  YEAR                     The year for the giacenza
+  CSV                      The csv file
   DATE-NAME                The date field name
   AMOUNT-NAME              The amount field name
   NUMBER-FORMAT            The number format, european or american
+
 ```
 
 ## TODO
