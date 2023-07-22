@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-import Types (NumberFormat (NumberFormat), parseValue)
 import Test.Hspec (describe, hspec, it, shouldBe)
+import Types (NumberFormat (NumberFormat), parseValue)
 
 main :: IO ()
 main = hspec $ do

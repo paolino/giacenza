@@ -47,6 +47,7 @@ import Lucid
     , rel_
     , renderBS
     , required_
+    , span_
     , src_
     , table_
     , td_
@@ -55,7 +56,7 @@ import Lucid
     , tr_
     , type_
     , ul_
-    , value_, span_
+    , value_
     )
 import Network.HTTP.Media ((//), (/:))
 import Servant (MimeRender (..))
@@ -78,11 +79,11 @@ instance Accept HTML where
 instance MimeRender HTML RawHtml where
     mimeRender _ = unRaw
 
-pageH :: Html () -> Html ()
-pageH body = html_ [term "data-bs-theme" "dark"]
+pageH :: Text -> Page -> Html () -> Html ()
+pageH prefix p body = html_ [term "data-bs-theme" "dark"]
     $ do
         head_ $ do
-            title_ "Analisi deposit media"
+            title_ "Average deposit and end-of-year balance of your transactions"
             meta_ [charset_ "utf-8"]
             meta_ [name_ "viewport", content_ "width=device-width, initial-scale=1.0"]
             link_
@@ -101,7 +102,7 @@ pageH body = html_ [term "data-bs-theme" "dark"]
 
             pure ()
         body_ $ do
-            headH
+            headH p prefix
             div_ [class_ "container"] $ do
                 div_
                     [class_ "main"]
@@ -137,14 +138,14 @@ radioH nf = do
                 <> ([term "checked" "checked" | nf == European])
         label_ [for_ "number-format2", class_ "form-check-label"] "European number format"
 
-formH :: Maybe Text -> Maybe Text -> NumberFormatKnown -> Html ()
-formH mDateField mAmountField nf = div_ [] $ do
+formH :: Text -> Maybe Text -> Maybe Text -> NumberFormatKnown -> Html ()
+formH prefix mDateField mAmountField nf = div_ [] $ do
     let dateField' = fromMaybe "Date" mDateField
     let amountField' = fromMaybe "Amount" mAmountField
     h3_ [class_ "mb-3 border-bottom"] "New request"
     form_
         [ method_ "POST"
-        , action_ "/deposit/form"
+        , action_ $ prefix <> "/deposit/form"
         , enctype_ "multipart/form-data"
         , class_ "needs-validation"
         , novalidate_ ""
@@ -220,14 +221,19 @@ resultH filename (Result m) =
                             $ toHtml
                             $ showEuro s
 
-headH :: Html ()
-headH = do
+activePageH p q =
+    if p == q
+        then (<> [class_ "nav-link active", term "aria-current" "page"])
+        else (<> [class_ "nav-link"])
+
+headH :: Page -> Text -> Html ()
+headH p prefix = do
     header_ [class_ "d-flex justify-content-center py-3"] $ do
         ul_ [class_ "nav nav-pills"] $ do
             li_ [class_ "nav-item"] $ do
-                a_ [href_ "/", class_ "nav-link active", term "aria-current" "page"] "Home"
+                a_ (activePageH p Home [href_ $ prefix <> "/"]) "Home"
             li_ [class_ "nav-item"] $ do
-                a_ [href_ "/about", class_ "nav-link"] "About"
+                a_ (activePageH p About [href_ $ prefix <> "/about"]) "About"
 
 aboutH :: Html ()
 aboutH = do
@@ -252,22 +258,28 @@ data Feedback = Feedback
     , numberFormat :: NumberFormatKnown
     , clientFilename :: Text
     }
-data Page = Home | About | Positive Feedback Result | Negative Feedback Text
+    deriving (Eq, Show)
+data Page
+    = Home
+    | About
+    | Positive Feedback Result
+    | Negative Feedback Text
+    deriving (Eq)
 
-page :: Page -> RawHtml
-page p = RawHtml $ renderBS $ case p of
-    Home -> pageH $ formH Nothing Nothing European
-    About -> pageH aboutH
-    Positive Feedback{..} result -> pageH $ do
+page :: Text -> Page -> RawHtml
+page prefix p = RawHtml $ renderBS $ case p of
+    Home -> pageH prefix p $ formH prefix Nothing Nothing European
+    About -> pageH prefix p aboutH
+    Positive Feedback{..} result -> pageH prefix Home $ do
         div_ [class_ "row"]
             $ resultH clientFilename result
         div_ [class_ "row mt-5"]
-            $ formH (Just dateField) (Just amountField) numberFormat
-    Negative Feedback{..} msg -> pageH $ do
+            $ formH prefix (Just dateField) (Just amountField) numberFormat
+    Negative Feedback{..} msg -> pageH prefix Home $ do
         div_ [class_ "row"]
             $ reportExcH msg
         div_ [class_ "row mt-5"]
-            $ formH (Just dateField) (Just amountField) numberFormat
+            $ formH prefix (Just dateField) (Just amountField) numberFormat
 
 footerH :: Html ()
 footerH =
@@ -277,7 +289,7 @@ footerH =
                 $ do
                     ul_ [class_ "nav flex-column"] $ do
                         li_ [class_ "nav-item mb-2"] "© 2023 Paolo Veronelli, Lambdasistemi"
-                        li_ [class_ "nav-item mb-2"] $ do 
+                        li_ [class_ "nav-item mb-2"] $ do
                             span_ "Source code on "
                             a_
                                 [href_ "https://github.com/paolino/giacenza"]

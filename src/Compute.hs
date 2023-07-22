@@ -99,7 +99,7 @@ parseNamedRecord' :: Config -> NamedRecord -> CSV.Parser Movement
 parseNamedRecord' (Config nf (encodeUtf8 -> dateField) (encodeUtf8 -> amountField)) m =
     Movement
         <$> m
-        .: dateField
+            .: dateField
         <*> parseNR (parseWithEithers $ parseValue $ numberFormatOf nf) m amountField
 
 {- giacenza
@@ -113,7 +113,7 @@ foldResults :: (Monad m, Num a, Num b) => Stream (Of (a, b)) m r -> m (Of (a, b)
 foldResults = S.fold (\(s, n) (s', n') -> (s + s', n + n')) (0, 0) identity
 
 analyzeData
-    :: Monad m
+    :: (Monad m)
     => Stream (Of Movement) m r
     -> Stream
         (Of (Year, Giacenza Value))
@@ -125,7 +125,7 @@ analyzeData =
         . foldDays
 
 parseCSV
-    :: MonadError SC.CsvParseException m
+    :: (MonadError SC.CsvParseException m)
     => Config
     -> ByteStream m r
     -> Stream (Of Movement) m r
@@ -135,7 +135,7 @@ program :: Config -> FilePath -> ExceptT CsvParseException IO Result
 program cfg fp = readCSVFile cfg fp collectResult
 
 readCSVFile
-    :: ExceptT SC.CsvParseException IO ~ m
+    :: (ExceptT SC.CsvParseException IO ~ m)
     => Config
     -> FilePath
     -> ( Stream
@@ -151,8 +151,6 @@ readCSVFile cfg filePath f =
 
 showEuro :: Value -> Text
 showEuro (Value v) = T.pack (showFFloat (Just 2) v "") <> " €"
-
-
 
 collectResults :: (Num a1, Num b) => Of (Maybe (a2, a1)) (Maybe b) -> (a1, b)
 collectResults (ms :> mg) = (maybe 0 snd ms, fromMaybe 0 mg)

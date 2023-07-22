@@ -25,7 +25,7 @@ import Compute
     )
 import Data.Aeson (ToJSON (..), object)
 import Data.Map.Strict qualified as Map
-import Data.String (String, IsString (..))
+import Data.String (IsString (..), String)
 import Form
     ( Feedback (..)
     , HTML
@@ -36,8 +36,9 @@ import Form
 import Network.Wai.Handler.Warp
     ( defaultSettings
     , runSettings
+    , setHost
     , setLogger
-    , setPort, setHost
+    , setPort
     )
 import Network.Wai.Logger (withStdoutLogger)
 import Network.Wai.Parse (defaultParseRequestBodyOptions, setMaxRequestFileSize)
@@ -143,13 +144,14 @@ parseNumberFormat = \case
 parseYear :: Text -> Either String Year
 parseYear = fmap Year . readEither . toS
 
-server :: Server API
-server =
+server :: Text -> Server API
+server prefix =
     giacenza
         :<|> form
-        :<|> getForm
+        :<|> getForm prefix
         :<|> pure (page About)
   where
+    page = Form.page prefix
     giacenza dateField amountField numberFormat body =
         Handler
             $ withExceptT convertCsvParseException
@@ -171,7 +173,7 @@ server =
                 Right m -> page $ Positive Feedback{..} m
                 Left exc -> page $ Negative Feedback{..} $ show exc
 
-    getForm = pure $ page Home
+    getForm prefix = pure $ page Home
 
 convertCsvParseException :: CsvParseException -> ServerError
 convertCsvParseException exc = err406{errBody = "CSV parse error:" <> show exc}
@@ -182,8 +184,8 @@ liftToCsvException = lift
 myApi :: Proxy API
 myApi = Proxy
 
-app :: Application
-app =
+app :: Text -> Application
+app prefix =
     let
         size10MB = 10_000_000
         multipartOpts =
@@ -194,16 +196,16 @@ app =
                         defaultParseRequestBodyOptions
                 }
         context = multipartOpts :. EmptyContext
-     in
-        serveWithContext myApi context server
+    in
+        serveWithContext myApi context $ server prefix
 
-main :: Int -> String -> IO ()
-main port host = withStdoutLogger $ \aplogger -> do
-    let settings 
-            = setPort port 
-            $ setHost (fromString host)
-            $ setLogger aplogger defaultSettings
-    runSettings settings app
+main :: Text -> Int -> String -> IO ()
+main prefix port host = withStdoutLogger $ \aplogger -> do
+    let settings =
+            setPort port
+                $ setHost (fromString host)
+                $ setLogger aplogger defaultSettings
+    runSettings settings $ app prefix
 
 instance FromHttpApiData NumberFormatKnown where
     parseUrlPiece "european" = Right European

@@ -21,9 +21,10 @@ import Protolude
 import Data.Time (Day)
 
 newtype Value = Value {unValue :: Double}
-    deriving (Num, Show, Fractional)
+    deriving (Num, Show, Fractional, Eq)
 
 newtype Result = Result (Map Year (Saldo Value, Giacenza Value))
+    deriving (Show, Eq)
 
 data NumberFormatKnown = European | American
     deriving (Show, Eq)

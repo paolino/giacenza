@@ -16,22 +16,27 @@ Name of columns and number format can be specified at request time.
 - fire `ghcup tui` and select ghc-9.4.5 as compiler
 - > cabal install
 
-## Run as a web server container from dockerhub
+## Run as a web server container from dockerhub locally
 
 - need docker support from your operating system
-- > docker run -p 8080:8080 paolino/giacenza giacenza serve
+- > docker run -p 8080:8080 paolino/giacenza giacenza serve 0.0.0.0 8080 ""
+
+
+## Use the online instance
+
+[giacenza](https://plutimus.com/giacenza)
 
 ## Help from the commandline
 ```
+Usage: giacenza serve HOST PORT PREFIX
 
-Usage: giacenza (serve | CSV DATE-NAME AMOUNT-NAME NUMBER-FORMAT)
+  Start the web server
 
 Available options:
+  HOST                     The host to bind to
+  PORT                     The port to bind to
+  PREFIX                   The prefix to add to the http calls
   -h,--help                Show this help text
-  CSV                      The csv file
-  DATE-NAME                The date field name
-  AMOUNT-NAME              The amount field name
-  NUMBER-FORMAT            The number format, european or american
 
 ```
 
