@@ -119,4 +119,6 @@ test-suite giacenza-test
     , time
     , turtle
     , vector
+    , hspec
+    , interpolate
   default-language: Haskell2010
