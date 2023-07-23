@@ -31,9 +31,12 @@ import Protolude hiding (Handler)
 import Servant
     ( Context (..)
     , FromHttpApiData (..)
+    , Header
+    , Headers
+    , addHeader
     , serveWithContext
     , (:<|>) (..)
-    , (:>), Headers, Header, addHeader
+    , (:>)
     )
 import Servant.API
     ( Get
@@ -189,13 +192,16 @@ app prefix =
                         defaultParseRequestBodyOptions
                 }
         context = multipartOpts :. EmptyContext
-     in
+    in
         serveWithContext myApi context $ server prefix
 
-runServer 
-    :: Text -- ^ prefix
-    -> Int -- ^ port
-    -> String -- ^ host
+runServer
+    :: Text
+    -- ^ prefix
+    -> Int
+    -- ^ port
+    -> String
+    -- ^ host
     -> IO ()
 runServer prefix port host = withStdoutLogger $ \aplogger -> do
     let settings =

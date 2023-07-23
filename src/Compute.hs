@@ -87,7 +87,7 @@ parseNamedRecord' :: Config -> NamedRecord -> CSV.Parser Movement
 parseNamedRecord' (Config nf (encodeUtf8 -> dateField) (encodeUtf8 -> amountField)) m =
     Movement
         <$> m
-        .: dateField
+            .: dateField
         <*> parseNR (parseWithEithers $ parseValue $ numberFormatOf nf) m amountField
 
 {- giacenza

@@ -1,17 +1,22 @@
 module Configuration where
-import Turtle
-    ( arg,
-      argInt,
-      argPath,
-      argText,
-      subcommand,
-      Parser )
-import Types ( NumberFormatKnown, parseNumberFormat )
-import Protolude
 
-parseOptions :: Parser
-  (Either
-     (Text, Int, Text) (FilePath, Text, Text, NumberFormatKnown))
+import Protolude
+import Turtle
+    ( Parser
+    , arg
+    , argInt
+    , argPath
+    , argText
+    , subcommand
+    )
+import Types (NumberFormatKnown, parseNumberFormat)
+
+parseOptions
+    :: Parser
+        ( Either
+            (Text, Int, Text)
+            (FilePath, Text, Text, NumberFormatKnown)
+        )
 parseOptions = fmap Left parserServe <|> fmap Right parser
 
 parser :: Parser (FilePath, Text, Text, NumberFormatKnown)
