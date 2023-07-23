@@ -1,5 +1,7 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE ImportQualifiedPost #-}
-{-# LANGUAGE NamedFieldPuns, TemplateHaskell, AllowAmbiguousTypes #-}
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Logic.Interpreter.Synchronous
     ( ServerState (..)
@@ -8,6 +10,7 @@ module Logic.Interpreter.Synchronous
     , emptySessionState
     , runSynchronicState
     , SynchronicState
+    , SynchronicStateWithMockTime
     , runSynchronicStateWithMockTime
     , setTime
     , MockTime
@@ -20,6 +23,7 @@ import Data.Time.Clock qualified as IO (getCurrentTime)
 import Logic.Language
     ( RecoverR (..)
     , SessionE (..)
+    , SessionTimeE (..)
     , StateE (..)
     , StateError (..)
     , TimeE (..)
@@ -27,23 +31,26 @@ import Logic.Language
     , noSession
     )
 import Polysemy
-    ( Embed
+    ( Effect
+    , Embed
     , Member
     , Sem
     , embed
     , interpret
     , interpretH
+    , makeSem
     , pureT
     , raise
+    , run
     , runM
-    , runT, Effect, makeSem, run
+    , runT
     )
 import Polysemy.Error (Error, runError, throw, try)
-import Polysemy.Internal.Tactics (Inspector (..), getInspectorT)
-import Polysemy.State (State, get, put, runState, evalState)
-import Protolude hiding (State, get, put, runState, try, evalState)
-import Types (Analysis (..), Cookie (..), CookieGen (..), FileName (..))
 import Polysemy.Internal.Kind (Append)
+import Polysemy.Internal.Tactics (Inspector (..), getInspectorT)
+import Polysemy.State (State, evalState, get, put, runState)
+import Protolude hiding (State, evalState, get, put, runState, try)
+import Types (Analysis (..), Cookie (..), CookieGen (..), FileName (..))
 
 data ServerState t = ServerState
     { sessions :: Map Cookie (SessionState t)
@@ -91,8 +98,8 @@ runServerE = interpret $ \case
             do Just cookie
         pure cookie
     DeleteSession cookie -> do
-        ServerState{sessions, cookies, localSession}
-            <- get @(ServerState t)
+        ServerState{sessions, cookies, localSession} <-
+            get @(ServerState t)
         case Map.lookup cookie sessions of
             Nothing -> pure ()
             Just _ -> do
@@ -121,18 +128,13 @@ runSessionE
      . ( Member (State (ServerState t)) effs
        , Member RecoverR effs
        )
-    => Sem (SessionE t ': effs) a
+    => Sem (SessionE ': effs) a
     -> Sem effs a
 runSessionE = interpret $ \case
     GetFiles -> onLocalSession @t
         $ \_ SessionState{files} -> pure $ Map.keys files
     GetFile fileName -> onLocalSession @t
         $ \_ SessionState{files} -> pure $ files Map.! fileName
-    UpdateTime t -> onLocalSession @t
-        $ \put' s -> do
-            put' $ s{time = t}
-    GetTime -> onLocalSession @t
-        $ \_ SessionState{time} -> pure time
     AddFile path -> onLocalSession @t
         $ \put' s -> do
             let fileName = FileName $ hash path
@@ -147,6 +149,20 @@ runSessionE = interpret $ \case
     DeleteFile fileName -> onLocalSession @t
         $ \put' s -> do
             put' $ s{files = Map.delete fileName $ files s}
+
+runSessionTimeE
+    :: forall t effs a
+     . ( Member (State (ServerState t)) effs
+       , Member RecoverR effs
+       )
+    => Sem (SessionTimeE t : effs) a
+    -> Sem effs a
+runSessionTimeE = interpret $ \case
+    UpdateTime t -> onLocalSession
+        $ \put' s -> do
+            put' $ s{time = t}
+    GetTime -> onLocalSession
+        $ \_ SessionState{time} -> pure time
 
 runTimeIOE
     :: (Member (Embed IO) r)
@@ -170,14 +186,18 @@ runRecoverR = interpretH $ \case
                     Just r'' -> pureT $ Right r''
 
 type SynchronicState t ks =
-    Sem ( Append
-        '[ StateE
-         , SessionE t
-         , State (ServerState t)
-         , TimeE t
-         , RecoverR
-         , Error StateError
-         ] ks)
+    Sem
+        ( Append
+            '[ StateE
+             , SessionE
+             , SessionTimeE t
+             , State (ServerState t)
+             , TimeE t
+             , RecoverR
+             , Error StateError
+             ]
+            ks
+        )
 
 runSynchronicState
     :: ServerState UTCTime
@@ -189,7 +209,8 @@ runSynchronicState s =
         . runRecoverR
         . runTimeIOE
         . runState s
-        . runSessionE
+        . runSessionTimeE
+        . runSessionE @UTCTime
         . runServerE @UTCTime
 
 data MockTime t :: Effect where
@@ -197,7 +218,9 @@ data MockTime t :: Effect where
 
 makeSem ''MockTime
 
-runMockTime :: (Member (State t) r) => Sem (MockTime t : r) a
+runMockTime
+    :: (Member (State t) r)
+    => Sem (MockTime t : r) a
     -> Sem r a
 runMockTime = interpret $ \case
     SetTime time -> put time
@@ -209,17 +232,23 @@ runTimeWithMockTime
 runTimeWithMockTime = interpret $ \case
     GetCurrentTime -> get
 
+type SynchronicStateWithMockTime t
+    = SynchronicState t '[MockTime t, State t]
+
 runSynchronicStateWithMockTime
-    :: forall t a. ServerState t
+    :: forall t a
+     . ServerState t
     -> t
-    -> SynchronicState t '[MockTime t , State t] a
+    -> SynchronicStateWithMockTime t a
     -> Either StateError (ServerState t, a)
-runSynchronicStateWithMockTime s t = run
-    . evalState t
-    . runMockTime
-    . runError
-    . runRecoverR
-    . runTimeWithMockTime
-    . runState s
-    . runSessionE
-    . runServerE @t
+runSynchronicStateWithMockTime s t =
+    run
+        . evalState t
+        . runMockTime
+        . runError
+        . runRecoverR
+        . runTimeWithMockTime
+        . runState s
+        . runSessionTimeE @t
+        . runSessionE @t
+        . runServerE @t

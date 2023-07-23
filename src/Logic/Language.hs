@@ -1,10 +1,12 @@
 {-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE TemplateHaskell, AllowAmbiguousTypes #-}
+{-# LANGUAGE TemplateHaskell #-}
+
 {-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 
 module Logic.Language
     ( SessionE (..)
+    , SessionTimeE (..)
     , StateE (..)
     , TimeE (..)
     , RecoverR (..)
@@ -26,9 +28,8 @@ module Logic.Language
     , recover
     ) where
 
-import Protolude hiding (State, get, put, runState)
-
 import Polysemy (Effect, Member, Sem, makeSem)
+import Protolude hiding (State, get, put, runState)
 import Types (Analysis, Cookie, Failure, FileName, Result)
 
 ----- StateE language ---------------------------------------------------------
@@ -42,19 +43,21 @@ makeSem ''StateE
 
 ----- SessionE language -------------------------------------------------------
 
-type family TimeOf m
-
-data SessionE t :: Effect where
-    GetFiles :: SessionE t m [FileName]
-    GetFile :: FileName -> SessionE t m Analysis
-    UpdateTime :: t -> SessionE t m ()
-    GetTime :: SessionE t m t
-    AddFile :: FilePath -> SessionE t m FileName
-    SetResult :: FileName -> Result -> SessionE t m ()
-    SetFailure :: FileName -> Failure -> SessionE t m ()
-    DeleteFile :: FileName -> SessionE t m ()
+data SessionE :: Effect where
+    GetFiles :: SessionE m [FileName]
+    GetFile :: FileName -> SessionE m Analysis
+    AddFile :: FilePath -> SessionE m FileName
+    SetResult :: FileName -> Result -> SessionE m ()
+    SetFailure :: FileName -> Failure -> SessionE m ()
+    DeleteFile :: FileName -> SessionE m ()
 
 makeSem ''SessionE
+
+data SessionTimeE t :: Effect where
+    UpdateTime :: t -> SessionTimeE t m ()
+    GetTime :: SessionTimeE t m t
+
+makeSem ''SessionTimeE
 
 ---- Public API of SessionE ----------------------------------------------------
 
