@@ -52,8 +52,10 @@ parseValue :: NumberFormat -> ByteString -> Either String Value
 parseValue NumberFormat{..} = parseOnly $ do
     v <- optional $ char '-'
     d <- foldl' (\w t -> w * 1000 + t) 0 <$> euros
-    void $ char decimalSeparator
-    c <- decimal @Int
+    ds <- optional $ char decimalSeparator
+    c <- case ds of
+        Nothing -> pure 0
+        Just _ -> decimal @Int
     pure
         $ Value
         $ (if isJust v then negate else identity) (fromIntegral d + fromIntegral c / 100)

@@ -1,5 +1,7 @@
 format:
 	fourmolu -i src
+	fourmolu -i test
+	fourmolu -i app
 install:
 	cabal install --overwrite-policy=always --installdir=docker --install-method=copy
 image:

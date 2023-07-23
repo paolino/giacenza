@@ -5,6 +5,7 @@ module Types where
 import Data.String (String)
 import Data.Time (Day)
 import Protolude
+import Protolude.Base (Show (..))
 
 newtype Value = Value {unValue :: Double}
     deriving (Num, Show, Fractional, Eq)
@@ -37,7 +38,7 @@ data Config = Config
     }
 
 data Movement = Movement {date :: Day, amount :: Value}
-    deriving (Show)
+    deriving (Show, Eq)
 
 newtype Giacenza x = Giacenza {unGiacenza :: x}
     deriving newtype (Num, Fractional, Show, Eq)
@@ -46,3 +47,23 @@ newtype Year = Year {unYear :: Integer} deriving (Eq, Show, Num, Ord)
 
 newtype Saldo x = Saldo {unSaldo :: x}
     deriving newtype (Num, Fractional, Show, Eq)
+
+newtype Cookie = Cookie Text
+    deriving (Eq, Ord, Show)
+
+data CookieGen = CookieGen Cookie CookieGen
+
+instance Show CookieGen where
+    show = const "CookieGen"
+
+instance Eq CookieGen where
+    _ == _ = True
+
+data Analysis = NotDone | Failed Failure | Success Result
+    deriving (Eq, Show)
+
+data Failure = ParsingOfFileFailed | AnalysisFailed
+    deriving (Eq, Show)
+
+newtype FileName = FileName Int
+    deriving (Eq, Ord, Show, Num)

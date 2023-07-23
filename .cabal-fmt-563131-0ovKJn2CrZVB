@@ -129,7 +129,7 @@ executable giacenza
   default-language: Haskell2010
 
 test-suite giacenza-test
-   default-extensions:
+  default-extensions:
     BlockArguments
     DataKinds
     DerivingStrategies
