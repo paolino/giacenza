@@ -33,7 +33,7 @@ import Servant
     , FromHttpApiData (..)
     , serveWithContext
     , (:<|>) (..)
-    , (:>)
+    , (:>), Headers, Header, addHeader
     )
 import Servant.API
     ( Get
@@ -93,7 +93,7 @@ type API =
             -- :> QueryParam' '[Required] "number-format" NumberFormat
             :> MultipartForm Tmp GiacenzaInput
             :> Post '[HTML] RawHtml
-        :<|> Get '[HTML] RawHtml
+        :<|> Get '[HTML] (Headers '[Header "Set-Cookie" Text] RawHtml)
         :<|> "about" :> Get '[HTML] RawHtml
 
 instance ToJSON Result where
@@ -160,7 +160,13 @@ server prefix =
                 Right m -> page' $ Positive Feedback{..} m
                 Left exc -> page' $ Negative Feedback{..} $ show exc
 
-    getForm = pure $ page' Home
+    getForm = pure $ addHeader (giacenzaCookie <> "=" <> cookie) $ page' Home
+
+cookie :: Text
+cookie = "true"
+
+giacenzaCookie :: Text
+giacenzaCookie = "giacenza"
 
 convertCsvParseException :: CsvParseException -> ServerError
 convertCsvParseException exc = err406{errBody = "CSV parse error:" <> show exc}
