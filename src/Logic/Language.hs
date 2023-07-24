@@ -1,7 +1,7 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE TemplateHaskell #-}
-
 {-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 
 module Logic.Language
@@ -11,10 +11,11 @@ module Logic.Language
     , TimeE (..)
     , RecoverR (..)
     , StateError (..)
-    , withSession
+    , SessionId
     , getSession
     , newSession
     , deleteSession
+    , updateSession
     , getTime
     , updateTime
     , getFiles
@@ -26,20 +27,12 @@ module Logic.Language
     , getCurrentTime
     , noSession
     , recover
-    ) where
+    )
+where
 
-import Polysemy (Effect, Member, Sem, makeSem)
+import Polysemy (Effect, Sem, makeSem)
 import Protolude hiding (State, get, put, runState)
-import Types (Analysis, Cookie, Failure, FileName, Result)
-
------ StateE language ---------------------------------------------------------
-
-data StateE :: Effect where
-    GetSession :: Cookie -> StateE m Cookie
-    NewSession :: StateE m Cookie
-    DeleteSession :: Cookie -> StateE m ()
-
-makeSem ''StateE
+import Types (Analysis, Failure, FileName, Result)
 
 ----- SessionE language -------------------------------------------------------
 
@@ -59,12 +52,17 @@ data SessionTimeE t :: Effect where
 
 makeSem ''SessionTimeE
 
----- Public API of SessionE ----------------------------------------------------
+----- StateE language ---------------------------------------------------------
 
-withSession :: (Member StateE r) => Cookie -> Sem r a -> Sem r (Cookie, a)
-withSession cookie f = do
-    cookie' <- getSession cookie
-    (cookie',) <$> f
+type family SessionId s
+
+data StateE s u :: Effect where
+    GetSession :: SessionId s -> StateE s u m s
+    NewSession :: StateE s u m (SessionId s)
+    DeleteSession :: SessionId s -> StateE s u m ()
+    UpdateSession :: SessionId s -> Sem (SessionE ': u) a -> StateE s u m a
+
+makeSem ''StateE
 
 ---- TimeE language -----------------------------------------------------------
 

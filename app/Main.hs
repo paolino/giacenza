@@ -77,6 +77,6 @@ tabulate :: Tabulation -> Text
 tabulate (Tabulation []) = ""
 tabulate (Tabulation ((n, t) : ts)) =
     let l = length (toS t :: String)
-    in  toS (replicate (n - l) ' ')
+     in toS (replicate (n - l) ' ')
             <> t
             <> tabulate (Tabulation ts)

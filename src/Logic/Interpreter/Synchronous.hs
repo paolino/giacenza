@@ -1,156 +1,125 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE TemplateHaskell #-}
 
 module Logic.Interpreter.Synchronous
     ( ServerState (..)
     , emptyServerState
     , SessionState (..)
+    , StateOfSession
     , emptySessionState
-    , runSynchronicState
+    , runPureSynchronicState
+    -- , runSynchronicState
     , SynchronicState
-    , SynchronicStateWithMockTime
-    , runSynchronicStateWithMockTime
-    , setTime
-    , MockTime
+    -- , SynchronicStateWithMockTime
+    -- , runSynchronicStateWithMockTime
+    -- , setTime
+    -- , MockTime
     )
 where
 
 import Data.Map qualified as Map
-import Data.Time.Clock (UTCTime)
-import Data.Time.Clock qualified as IO (getCurrentTime)
 import Logic.Language
-    ( RecoverR (..)
-    , SessionE (..)
-    , SessionTimeE (..)
+    ( SessionE (..)
+    , SessionId
     , StateE (..)
-    , StateError (..)
-    , TimeE (..)
-    , getCurrentTime
-    , noSession
     )
 import Polysemy
-    ( Effect
-    , Embed
-    , Member
+    ( Member
+    , Members
     , Sem
-    , embed
     , interpret
-    , interpretH
-    , makeSem
-    , pureT
-    , raise
     , run
-    , runM
-    , runT
     )
-import Polysemy.Error (Error, runError, throw, try)
 import Polysemy.Internal.Kind (Append)
-import Polysemy.Internal.Tactics (Inspector (..), getInspectorT)
 import Polysemy.State (State, evalState, get, put, runState)
 import Protolude hiding (State, evalState, get, put, runState, try)
 import Types (Analysis (..), Cookie (..), CookieGen (..), FileName (..))
 
-data ServerState t = ServerState
-    { sessions :: Map Cookie (SessionState t)
+type instance SessionId SessionState = Cookie
+
+data ServerState = ServerState
+    { sessions :: Map Cookie SessionState
     , cookies :: CookieGen
-    , localSession :: Maybe Cookie
     }
     deriving (Eq, Show)
 
-emptyServerState :: CookieGen -> ServerState t
-emptyServerState cg = ServerState mempty cg Nothing
+emptyServerState :: CookieGen -> ServerState
+emptyServerState = ServerState mempty
 
-data SessionState t = SessionState
+newtype SessionState = SessionState
     { files :: Map FileName Analysis
-    , time :: t
     }
     deriving (Eq, Show)
 
-emptySessionState :: t -> SessionState t
+emptySessionState :: SessionState
 emptySessionState = SessionState mempty
 
+type StateOfSession effs = StateE SessionState (State SessionState ': effs)
+
 runServerE
-    :: forall t effs a
-     . (Member (State (ServerState t)) effs, Member (TimeE t) effs)
-    => Sem (StateE ': effs) a
+    :: forall effs a
+     . (Members '[State ServerState] effs)
+    => Sem (StateOfSession effs ': effs) a
     -> Sem effs a
 runServerE = interpret $ \case
     GetSession cookie -> do
-        ServerState{sessions, cookies = CookieGen cookie' cookieGen'} <- get
+        ServerState{sessions, cookies} <- get
         case Map.lookup cookie sessions of
             Nothing -> do
-                time <- getCurrentTime @t
-                put
-                    $ ServerState
-                        do Map.insert cookie (emptySessionState time) sessions
-                        do cookieGen'
-                        do Just cookie
-                pure cookie'
-            Just _ -> pure cookie
+                let CookieGen cookie' next = cookies
+                put $ ServerState
+                    do Map.insert cookie' emptySessionState sessions
+                    do next
+                pure emptySessionState
+            Just x -> pure x
     NewSession -> do
-        ServerState{sessions, cookies = CookieGen cookie cookieGen'} <- get
-        time <- getCurrentTime @t
+        ServerState{sessions, cookies} <- get
+        let CookieGen cookie' f = cookies
         put $ ServerState
-            do Map.insert cookie (emptySessionState time) sessions
-            do cookieGen'
-            do Just cookie
-        pure cookie
+            do Map.insert cookie' emptySessionState sessions
+            do f
+        pure cookie'
     DeleteSession cookie -> do
-        ServerState{sessions, cookies, localSession} <-
-            get @(ServerState t)
-        case Map.lookup cookie sessions of
-            Nothing -> pure ()
-            Just _ -> do
-                let sessions' = Map.delete cookie sessions
-                put $ ServerState sessions' cookies localSession
-
-onLocalSession
-    :: (Member (State (ServerState t)) r, Member RecoverR r)
-    => ((SessionState t -> Sem r ()) -> SessionState t -> Sem r b)
-    -> Sem r b
-onLocalSession g = do
-    ServerState{sessions, cookies, localSession} <- get
-    case localSession of
-        Nothing -> noSession
-        Just cookie -> g
-            do
-                \s -> put
-                    $ ServerState
-                        do Map.insert cookie s sessions
-                        do cookies
-                        do localSession
-            do sessions Map.! cookie
+        ServerState{sessions, cookies} <- get
+        let sessions' = Map.delete cookie sessions
+        put $ ServerState sessions' cookies
+    UpdateSession cookie q -> do
+        ServerState{sessions, cookies} <- get
+        let session = fromMaybe emptySessionState (Map.lookup cookie sessions)
+        (session', x) <- runState session . runSessionE $ q
+        put $ ServerState (Map.insert cookie session' sessions) cookies
+        pure x
 
 runSessionE
-    :: forall t effs a
-     . ( Member (State (ServerState t)) effs
-       , Member RecoverR effs
+    :: forall effs a
+     . ( Member (State SessionState) effs
        )
     => Sem (SessionE ': effs) a
     -> Sem effs a
 runSessionE = interpret $ \case
-    GetFiles -> onLocalSession @t
-        $ \_ SessionState{files} -> pure $ Map.keys files
-    GetFile fileName -> onLocalSession @t
-        $ \_ SessionState{files} -> pure $ files Map.! fileName
-    AddFile path -> onLocalSession @t
-        $ \put' s -> do
-            let fileName = FileName $ hash path
-            put' $ s{files = Map.insert fileName NotDone $ files s}
-            pure fileName
-    SetResult fileName result -> onLocalSession @t
-        $ \put' s -> do
-            put' $ s{files = Map.insert fileName (Success result) $ files s}
-    SetFailure fileName failure -> onLocalSession @t
-        $ \put' s -> do
-            put' $ s{files = Map.insert fileName (Failed failure) $ files s}
-    DeleteFile fileName -> onLocalSession @t
-        $ \put' s -> do
-            put' $ s{files = Map.delete fileName $ files s}
+    GetFiles -> do
+        SessionState{files} <- get
+        pure $ Map.keys files
+    GetFile fileName -> do
+        SessionState{files} <- get
+        pure $ files Map.! fileName
+    AddFile path -> do
+        SessionState{files} <- get
+        let fileName = FileName $ hash path
+        put $ SessionState $ Map.insert fileName NotDone files
+        pure fileName
+    SetResult fileName result -> do
+        SessionState{files} <- get
+        put $ SessionState $ Map.insert fileName (Success result) files
+    SetFailure fileName failure -> do
+        SessionState{files} <- get
+        put $ SessionState $ Map.insert fileName (Failed failure) files
+    DeleteFile fileName -> do
+        SessionState{files} <- get
+        put $ SessionState $ Map.delete fileName files
 
-runSessionTimeE
+{- runSessionTimeE
     :: forall t effs a
      . ( Member (State (ServerState t)) effs
        , Member RecoverR effs
@@ -183,23 +152,15 @@ runRecoverR = interpretH $ \case
                 i <- getInspectorT
                 case inspect i r' of
                     Nothing -> panic "runRecoverR: impossible"
-                    Just r'' -> pureT $ Right r''
+                    Just r'' -> pureT $ Right r'' -}
 
-type SynchronicState t ks =
-    Sem
-        ( Append
-            '[ StateE
-             , SessionE
-             , SessionTimeE t
-             , State (ServerState t)
-             , TimeE t
-             , RecoverR
-             , Error StateError
-             ]
-            ks
-        )
+type SynchronicState ks =
+    Sem (Append '[StateE SessionState [State SessionState , State ServerState], State ServerState] ks)
 
-runSynchronicState
+runPureSynchronicState :: CookieGen -> SynchronicState '[] a -> a
+runPureSynchronicState cg = run . evalState (emptyServerState cg) . runServerE
+
+{- runSynchronicState
     :: ServerState UTCTime
     -> SynchronicState UTCTime '[Embed IO] a
     -> IO (Either StateError (ServerState UTCTime, a))
@@ -211,9 +172,9 @@ runSynchronicState s =
         . runState s
         . runSessionTimeE
         . runSessionE @UTCTime
-        . runServerE @UTCTime
+        . runServerE @UTCTime -}
 
-data MockTime t :: Effect where
+{- data MockTime t :: Effect where
     SetTime :: t -> MockTime t m ()
 
 makeSem ''MockTime
@@ -251,4 +212,4 @@ runSynchronicStateWithMockTime s t =
         . runState s
         . runSessionTimeE @t
         . runSessionE @t
-        . runServerE @t
+        . runServerE @t -}

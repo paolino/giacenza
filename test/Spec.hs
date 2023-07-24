@@ -3,13 +3,13 @@
 
 import Compute (parseValue)
 import Logic.Interpreter.Synchronous
-    ( emptyServerState
-    , SynchronicStateWithMockTime, runSynchronicStateWithMockTime
+import Logic.Invariants
+    ( getFileAfterAddFileProducesNotDone
     )
-import Logic.Invariants (addFileWithoutSessionProducesNoSession, getFileAfterAddFileProducesNotDone)
-import Protolude
+import Protolude hiding (State)
 import Test.Hspec (describe, hspec, it, shouldBe)
 import Types (Cookie (..), CookieGen (..), NumberFormat (NumberFormat))
+import Polysemy.State (State)
 
 sequentialCookieGen :: CookieGen
 sequentialCookieGen = go 0
@@ -17,15 +17,10 @@ sequentialCookieGen = go 0
     go :: Int -> CookieGen
     go n = CookieGen (Cookie (show n)) $ go (n + 1)
 
-
-
-testSynchronicState :: t -> SynchronicStateWithMockTime t Bool -> IO ()
-testSynchronicState t f = let
-    r = runSynchronicStateWithMockTime
-            do emptyServerState sequentialCookieGen
-            do t
-            do f
-    in snd <$> r `shouldBe` Right True
+testSynchronicState :: SynchronicState '[] Bool -> IO ()
+testSynchronicState f =
+    let r = runPureSynchronicState sequentialCookieGen f
+     in r `shouldBe` True
 
 main :: IO ()
 main = hspec $ do
@@ -50,8 +45,5 @@ main = hspec $ do
                 `shouldBe` Right (-1234.56)
     describe "synchronic state" $ do
         it "respects the afterAddFileGettingItProducesNotDone" $ do
-            testSynchronicState ()
-                getFileAfterAddFileProducesNotDone
-        it "respects the afterAddFileWithoutSessionProducesNoSession" $ do
-            testSynchronicState ()
-                addFileWithoutSessionProducesNoSession
+            testSynchronicState (getFileAfterAddFileProducesNotDone @SessionState )
+
