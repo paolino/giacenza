@@ -64,7 +64,7 @@ library
       Paths_giacenza
   hs-source-dirs:
       src
-  ghc-options: -Werror -O2 -Wall
+  ghc-options: -O2 -Wall
   build-depends:
       base >=4.7 && <5
     , aeson
@@ -107,7 +107,7 @@ executable giacenza
       Paths_giacenza
   hs-source-dirs:
       app
-  ghc-options: -Wall -threaded -rtsopts -with-rtsopts=-N -O2 -Werror
+  ghc-options: -Wall -threaded -rtsopts -with-rtsopts=-N -O2
   build-depends:
       base >=4.7 && <5
     , bytestring

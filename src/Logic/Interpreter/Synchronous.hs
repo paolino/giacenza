@@ -6,15 +6,11 @@ module Logic.Interpreter.Synchronous
     ( ServerState (..)
     , emptyServerState
     , SessionState (..)
-    , StateOfSession
     , emptySessionState
+
+      -- * pure interpreters
     , runPureSynchronicState
-    -- , runSynchronicState
-    , SynchronicState
-    -- , SynchronicStateWithMockTime
-    -- , runSynchronicStateWithMockTime
-    -- , setTime
-    -- , MockTime
+    , runPureSessionState
     )
 where
 
@@ -23,6 +19,7 @@ import Logic.Language
     ( SessionE (..)
     , SessionId
     , StateE (..)
+    , StateSem
     )
 import Polysemy
     ( Member
@@ -31,7 +28,6 @@ import Polysemy
     , interpret
     , run
     )
-import Polysemy.Internal.Kind (Append)
 import Polysemy.State (State, evalState, get, put, runState)
 import Protolude hiding (State, evalState, get, put, runState, try)
 import Types (Analysis (..), Cookie (..), CookieGen (..), FileName (..))
@@ -55,14 +51,12 @@ newtype SessionState = SessionState
 emptySessionState :: SessionState
 emptySessionState = SessionState mempty
 
-type StateOfSession effs = StateE SessionState (State SessionState ': effs)
-
-runServerE
+runStateE
     :: forall effs a
      . (Members '[State ServerState] effs)
-    => Sem (StateOfSession effs ': effs) a
+    => StateSem SessionState effs a
     -> Sem effs a
-runServerE = interpret $ \case
+runStateE = interpret $ \case
     GetSession cookie -> do
         ServerState{sessions, cookies} <- get
         case Map.lookup cookie sessions of
@@ -84,7 +78,7 @@ runServerE = interpret $ \case
         ServerState{sessions, cookies} <- get
         let sessions' = Map.delete cookie sessions
         put $ ServerState sessions' cookies
-    UpdateSession cookie q -> do
+    WithSession cookie q -> do
         ServerState{sessions, cookies} <- get
         let session = fromMaybe emptySessionState (Map.lookup cookie sessions)
         (session', x) <- runState session . runSessionE $ q
@@ -103,7 +97,7 @@ runSessionE = interpret $ \case
         pure $ Map.keys files
     GetFile fileName -> do
         SessionState{files} <- get
-        pure $ files Map.! fileName
+        pure $ fromMaybe FileAbsent $ Map.lookup fileName files
     AddFile path -> do
         SessionState{files} <- get
         let fileName = FileName $ hash path
@@ -118,6 +112,17 @@ runSessionE = interpret $ \case
     DeleteFile fileName -> do
         SessionState{files} <- get
         put $ SessionState $ Map.delete fileName files
+
+runPureSynchronicState
+    :: CookieGen
+    -> StateSem SessionState '[State ServerState] a
+    -> a
+runPureSynchronicState cg = run . evalState (emptyServerState cg) . runStateE
+
+runPureSessionState
+    :: Sem '[SessionE, State SessionState] a
+    -> a
+runPureSessionState = run . evalState emptySessionState . runSessionE
 
 {- runSessionTimeE
     :: forall t effs a
@@ -153,13 +158,6 @@ runRecoverR = interpretH $ \case
                 case inspect i r' of
                     Nothing -> panic "runRecoverR: impossible"
                     Just r'' -> pureT $ Right r'' -}
-
-type SynchronicState ks =
-    Sem (Append '[StateE SessionState [State SessionState , State ServerState], State ServerState] ks)
-
-runPureSynchronicState :: CookieGen -> SynchronicState '[] a -> a
-runPureSynchronicState cg = run . evalState (emptyServerState cg) . runServerE
-
 {- runSynchronicState
     :: ServerState UTCTime
     -> SynchronicState UTCTime '[Embed IO] a

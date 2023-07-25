@@ -3,13 +3,23 @@
 
 import Compute (parseValue)
 import Logic.Interpreter.Synchronous
-import Logic.Invariants
-    ( getFileAfterAddFileProducesNotDone
+    ( ServerState
+    , SessionState
+    , runPureSessionState
+    , runPureSynchronicState
     )
-import Protolude hiding (State)
-import Test.Hspec (describe, hspec, it, shouldBe)
-import Types (Cookie (..), CookieGen (..), NumberFormat (NumberFormat))
+import Logic.Invariants
+    ( createdSessionsAreUsable
+    , deletedSessionsAreNotReusable
+    , filesAreStored
+    , sessionsAreResusable
+    )
+import Logic.Language (SessionE, StateSem)
+import Polysemy (Sem)
 import Polysemy.State (State)
+import Protolude hiding (State)
+import Test.Hspec (Expectation, describe, hspec, it, shouldBe)
+import Types (Cookie (..), CookieGen (..), NumberFormat (NumberFormat))
 
 sequentialCookieGen :: CookieGen
 sequentialCookieGen = go 0
@@ -17,10 +27,17 @@ sequentialCookieGen = go 0
     go :: Int -> CookieGen
     go n = CookieGen (Cookie (show n)) $ go (n + 1)
 
-testSynchronicState :: SynchronicState '[] Bool -> IO ()
+testSynchronicState
+    :: StateSem SessionState '[State ServerState] Bool
+    -> Expectation
 testSynchronicState f =
     let r = runPureSynchronicState sequentialCookieGen f
-     in r `shouldBe` True
+    in  r `shouldBe` True
+
+testPureSessionState :: Sem '[SessionE, State SessionState] Bool -> Expectation
+testPureSessionState f =
+    let r = runPureSessionState f
+    in  r `shouldBe` True
 
 main :: IO ()
 main = hspec $ do
@@ -43,7 +60,13 @@ main = hspec $ do
         it "parses a negative value in american format" $ do
             parseValue (NumberFormat '.' ',') "-1,234.56"
                 `shouldBe` Right (-1234.56)
+    describe "pure session state" $ do
+        it "respects the filesAreStored invariant" $ do
+            testPureSessionState filesAreStored
     describe "synchronic state" $ do
         it "respects the afterAddFileGettingItProducesNotDone" $ do
-            testSynchronicState (getFileAfterAddFileProducesNotDone @SessionState )
-
+            testSynchronicState createdSessionsAreUsable
+        it "respect the sessionsAreResusable " $ do
+            testSynchronicState sessionsAreResusable
+        it "respects the deletedSessionsAreNotReusable" $ do
+            testSynchronicState deletedSessionsAreNotReusable

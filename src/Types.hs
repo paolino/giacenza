@@ -59,7 +59,7 @@ instance Show CookieGen where
 instance Eq CookieGen where
     _ == _ = True
 
-data Analysis = NotDone | Failed Failure | Success Result
+data Analysis = FileAbsent | NotDone | Failed Failure | Success Result
     deriving (Eq, Show)
 
 data Failure = ParsingOfFileFailed | AnalysisFailed

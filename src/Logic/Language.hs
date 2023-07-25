@@ -15,7 +15,7 @@ module Logic.Language
     , getSession
     , newSession
     , deleteSession
-    , updateSession
+    , withSession
     , getTime
     , updateTime
     , getFiles
@@ -27,10 +27,12 @@ module Logic.Language
     , getCurrentTime
     , noSession
     , recover
+    , StateSem
     )
 where
 
 import Polysemy (Effect, Sem, makeSem)
+import Polysemy.State (State)
 import Protolude hiding (State, get, put, runState)
 import Types (Analysis, Failure, FileName, Result)
 
@@ -56,11 +58,16 @@ makeSem ''SessionTimeE
 
 type family SessionId s
 
-data StateE s u :: Effect where
-    GetSession :: SessionId s -> StateE s u m s
-    NewSession :: StateE s u m (SessionId s)
-    DeleteSession :: SessionId s -> StateE s u m ()
-    UpdateSession :: SessionId s -> Sem (SessionE ': u) a -> StateE s u m a
+data StateE s e :: Effect where
+    GetSession :: SessionId s -> StateE s e m s
+    NewSession :: StateE s m e (SessionId s)
+    DeleteSession :: SessionId s -> StateE s e m ()
+    WithSession :: SessionId s -> Sem (SessionEffect s e) a -> StateE s e m a
+
+-- this is somehow limiting, and doesn't help much in disambiguition
+type SessionEffect s effs = SessionE ': State s ': effs
+
+type StateSem s effs = Sem (StateE s effs ': effs)
 
 makeSem ''StateE
 
