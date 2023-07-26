@@ -2,89 +2,117 @@
 {-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 
 module Logic.Language
     ( SessionE (..)
-    , SessionTimeE (..)
     , StateE (..)
-    , TimeE (..)
+    , FileStorageE (..)
     , RecoverR (..)
     , StateError (..)
-    , SessionId
-    , getSession
-    , newSession
+    , GetCookieE (..)
+    , AnalyzerE (..)
+    , ConfigE (..)
     , deleteSession
     , withSession
-    , getTime
-    , updateTime
     , getFiles
     , getFile
     , addFile
     , setResult
     , setFailure
     , deleteFile
-    , getCurrentTime
     , noSession
     , recover
+    , getFilePath
+    , putFilePath
+    , deleteFilePath
+    , analyze
+    , getCookie
+    , setConfig
     , StateSem
+    , getStoragePath
+    , storageOperationFailure
+    , fileNotConfigured
+    , getConfiguration
     )
 where
 
-import Polysemy (Effect, Sem, makeSem)
-import Polysemy.State (State)
+import Polysemy (Member, Sem, makeSem)
+import Polysemy.Internal.Kind (Effect)
 import Protolude hiding (State, get, put, runState)
-import Types (Analysis, Failure, FileName, Result)
+import Types (Analysis (..), Config, Cookie, DownloadPath, Failure, FileName, Result, StoragePath)
 
 ----- SessionE language -------------------------------------------------------
 
 data SessionE :: Effect where
     GetFiles :: SessionE m [FileName]
     GetFile :: FileName -> SessionE m Analysis
-    AddFile :: FilePath -> SessionE m FileName
+    AddFile :: FileName -> SessionE m ()
+    SetConfig :: FileName -> Config -> SessionE m ()
     SetResult :: FileName -> Result -> SessionE m ()
     SetFailure :: FileName -> Failure -> SessionE m ()
     DeleteFile :: FileName -> SessionE m ()
 
 makeSem ''SessionE
 
-data SessionTimeE t :: Effect where
-    UpdateTime :: t -> SessionTimeE t m ()
-    GetTime :: SessionTimeE t m t
+data FileStorageE :: Effect where
+    GetFilePath :: FileName -> FileStorageE m StoragePath
+    PutFilePath :: FileName -> DownloadPath -> FileStorageE m ()
+    DeleteFilePath :: FileName -> FileStorageE m ()
 
-makeSem ''SessionTimeE
+makeSem ''FileStorageE
+
+data AnalyzerE :: Effect where
+    Analyze :: StoragePath -> Config -> AnalyzerE m (Either Failure Result)
+
+makeSem ''AnalyzerE
+
+data GetCookieE :: Effect where
+    GetCookie :: GetCookieE m Cookie
+
+makeSem ''GetCookieE
 
 ----- StateE language ---------------------------------------------------------
 
-type family SessionId s
-
-data StateE s e :: Effect where
-    GetSession :: SessionId s -> StateE s e m s
-    NewSession :: StateE s m e (SessionId s)
-    DeleteSession :: SessionId s -> StateE s e m ()
-    WithSession :: SessionId s -> Sem (SessionEffect s e) a -> StateE s e m a
+data StateE e :: Effect where
+    DeleteSession :: Cookie -> StateE e m ()
+    WithSession :: Cookie -> Sem (SessionE ': e) a -> StateE e m a
 
 -- this is somehow limiting, and doesn't help much in disambiguition
-type SessionEffect s effs = SessionE ': State s ': effs
 
-type StateSem s effs = Sem (StateE s effs ': effs)
+type StateSem effs = Sem (StateE effs ': effs)
 
 makeSem ''StateE
 
----- TimeE language -----------------------------------------------------------
-
-data TimeE t :: Effect where
-    GetCurrentTime :: TimeE t m t
-
-makeSem ''TimeE
-
 ---- RecoverR language --------------------------------------------------------
 
-data StateError = ErrNoSession
+data StateError e
+    = ErrNoSession
+    | ErrStorageOperation FileName e
+    | ErrFileNotConfigured FileName
     deriving (Eq, Show)
 
-data RecoverR :: Effect where
-    NoSession :: RecoverR m b
-    Recover :: m a -> RecoverR m (Either StateError a)
+data RecoverR e :: Effect where
+    NoSession :: RecoverR e m b
+    StorageOperationFailure :: FileName -> e -> RecoverR e m b
+    FileNotConfigured :: FileName -> RecoverR e m b
+    Recover :: m a -> RecoverR e m (Either (StateError e) a)
 
 makeSem ''RecoverR
+
+data ConfigE :: Effect where
+    GetStoragePath :: ConfigE m StoragePath
+
+makeSem ''ConfigE
+
+getConfiguration
+    :: forall e r
+     . (Member (RecoverR e) r, Member SessionE r)
+    => FileName
+    -> Sem r Config
+getConfiguration fileName = do
+    status <- getFile fileName
+    case status of
+        Configured config -> pure config
+        Success _ config -> pure config
+        Failed _ config -> pure config
+        _ -> fileNotConfigured @e fileName

@@ -84,7 +84,7 @@ pageH prefix p body = html_ [term "data-bs-theme" "dark"]
                     [class_ "footer"]
                     footerH
 
-activePageH :: (Eq a) => a -> a -> [Attribute] -> [Attribute]
+activePageH :: Eq a => a -> a -> [Attribute] -> [Attribute]
 activePageH p q =
     if p == q
         then (<> [class_ "nav-link active", term "aria-current" "page"])

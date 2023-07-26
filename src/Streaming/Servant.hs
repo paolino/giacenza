@@ -43,20 +43,20 @@ instance StreamToSourceIO IO where
 -- consumeStream runSafe (Effect p) = S.Effect $ runSafe $ fmap (consumeStream runSafe) p
 -- consumeStream runSafe (Step (b :> n)) = S.Yield b (consumeStream runSafe n)
 
-instance (StreamToSourceIO m) => ToSourceIO b (Stream (Of b) m ()) where
+instance StreamToSourceIO m => ToSourceIO b (Stream (Of b) m ()) where
     toSourceIO = streamToSourceIO
 
-instance (MonadIO m) => FromSourceIO b (Stream (Of b) m ()) where
+instance MonadIO m => FromSourceIO b (Stream (Of b) m ()) where
     fromSourceIO (S.SourceT src) = Effect $ liftIO $ src (pure . toStreaming)
 
-toStreaming :: (MonadIO m) => S.StepT IO b -> Stream (Of b) m ()
+toStreaming :: MonadIO m => S.StepT IO b -> Stream (Of b) m ()
 toStreaming S.Stop = Return ()
 toStreaming (S.Error err) = Effect (liftIO $ fail err)
 toStreaming (S.Skip s) = toStreaming s -- drives
 toStreaming (S.Effect ms) = Effect (liftIO $ fmap toStreaming ms)
 toStreaming (S.Yield x s) = Step (x :> toStreaming s)
 
-instance (MonadIO m) => FromSourceIO ByteString (ByteStream m ()) where
+instance MonadIO m => FromSourceIO ByteString (ByteStream m ()) where
     -- fromSourceIO :: MonadIO m => SourceIO ByteString -> IO (ByteStream m ())
     fromSourceIO (S.SourceT src) = fromChunks $ Effect $ liftIO $ src (return . toStreaming)
 

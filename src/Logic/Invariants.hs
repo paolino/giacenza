@@ -5,23 +5,25 @@
 module Logic.Invariants where
 
 import Logic.Language
-    ( SessionE
-    , StateSem
+    ( GetCookieE
+    , SessionE
+    , StateE
     , addFile
     , deleteSession
+    , getCookie
     , getFile
-    , newSession
     , withSession
     )
-import Polysemy (Member, Sem)
+import Polysemy (Member, Members, Sem)
 import Protolude hiding (State, get, put, runState)
 import Types (Analysis (..))
 
 -- adding a file and getting it will produce a NotDone analysis
-filesAreStored :: (Member SessionE r) => Sem r Bool
+filesAreStored :: Member SessionE r => Sem r Bool
 filesAreStored = do
-    file <- addFile "file"
-    analysis <- getFile file
+    let filename = "file"
+    addFile filename
+    analysis <- getFile filename
     pure $ case analysis of
         NotDone -> True
         _ -> False
@@ -31,35 +33,38 @@ filesAreStored = do
 
 -- we can operate on a session after it's been created
 createdSessionsAreUsable
-    :: forall s effs
-     . StateSem s effs Bool
+    :: forall effs
+     . Members '[GetCookieE, StateE effs] effs
+    => Sem effs Bool
 createdSessionsAreUsable = do
-    cookie <- newSession @s @effs
-    withSession @s @effs cookie filesAreStored
+    cookie <- getCookie @effs
+    withSession @effs cookie filesAreStored
 
 -- we can reuse a session
 sessionsAreResusable
-    :: forall s effs
-     . StateSem s effs Bool
+    :: forall effs
+     . Members '[GetCookieE, StateE effs] effs
+    => Sem effs Bool
 sessionsAreResusable = do
-    cookie <- newSession @s @effs
-    file <- withSession @s @effs cookie $ do
-        addFile "file"
-    analysis <- withSession @s @effs cookie $ getFile file
+    cookie <- getCookie
+    let filename = "file"
+    withSession @effs cookie $ addFile filename
+    analysis <- withSession @effs cookie $ getFile filename
     pure $ case analysis of
         NotDone -> True
         _ -> False
 
 -- we cannot reuse a deleted session
 deletedSessionsAreNotReusable
-    :: forall s effs
-     . StateSem s effs Bool
+    :: forall effs
+     . Members '[GetCookieE, StateE effs] effs
+    => Sem effs Bool
 deletedSessionsAreNotReusable = do
-    cookie <- newSession @s @effs
-    file <- withSession @s @effs cookie $ do
-        addFile "file"
-    deleteSession @s @effs cookie
-    analysis <- withSession @s @effs cookie $ getFile file
+    cookie <- getCookie
+    let filename = "file"
+    withSession @effs cookie $ addFile filename
+    deleteSession @effs cookie
+    analysis <- withSession @effs cookie $ getFile filename
     pure $ case analysis of
         FileAbsent -> True
         _ -> False

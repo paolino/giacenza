@@ -6,6 +6,8 @@ import Data.String (String)
 import Data.Time (Day)
 import Protolude
 import Protolude.Base (Show (..))
+import Streaming.Cassava (CsvParseException)
+import Data.Aeson (ToJSON (..))
 
 newtype Value = Value {unValue :: Double}
     deriving (Num, Show, Fractional, Eq)
@@ -36,6 +38,7 @@ data Config = Config
     , dateField :: Text
     , amountField :: Text
     }
+    deriving (Show, Eq)
 
 data Movement = Movement {date :: Day, amount :: Value}
     deriving (Show, Eq)
@@ -59,11 +62,37 @@ instance Show CookieGen where
 instance Eq CookieGen where
     _ == _ = True
 
-data Analysis = FileAbsent | NotDone | Failed Failure | Success Result
+data Analysis
+    = FileAbsent
+    | NotDone
+    | Configured Config
+    | Failed Failure Config
+    | Success Result Config
     deriving (Eq, Show)
 
-data Failure = ParsingOfFileFailed | AnalysisFailed
+instance ToJSON Analysis where
+    toJSON = \case
+        FileAbsent -> "FileAbsent"
+        NotDone -> "NotDone"
+        Configured _ -> "Configured"
+        Failed _ _ -> "Failed"
+        Success _ _ -> "Success"
+
+newtype Failure = ParsingOfFileFailed CsvParseException
     deriving (Eq, Show)
 
-newtype FileName = FileName Int
-    deriving (Eq, Ord, Show, Num)
+newtype FileName = FileName Text
+    deriving (Eq, Ord, Show, IsString, ToJSON)
+
+type Analyzer = Config -> FilePath -> IO (Either Failure Result)
+
+newtype Randomness = Randomness Text
+
+newtype DownloadPath = DownloadPath FilePath
+    deriving (Eq, Show, IsString)
+
+newtype UploadPath = UploadPath FilePath
+    deriving (Eq, Show, IsString)
+
+newtype StoragePath = StoragePath FilePath
+    deriving (Eq, Show, IsString)

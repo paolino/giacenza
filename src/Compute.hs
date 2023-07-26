@@ -45,7 +45,7 @@ import Types
     , Saldo (Saldo)
     , Value (Value)
     , Year (Year)
-    , numberFormatOf
+    , numberFormatOf, Analyzer, Failure (ParsingOfFileFailed)
     )
 
 parseValue :: NumberFormat -> ByteString -> Either String Value
@@ -104,7 +104,7 @@ foldResults
 foldResults = S.fold (\(s, n) (s', n') -> (s + s', n + n')) (0, 0) identity
 
 analyzeData
-    :: (Monad m)
+    :: Monad m
     => Stream (Of Movement) m r
     -> Stream
         (Of (Year, Giacenza Value))
@@ -116,7 +116,7 @@ analyzeData =
         . foldDays
 
 parseCSV
-    :: (MonadError SC.CsvParseException m)
+    :: MonadError SC.CsvParseException m
     => Config
     -> ByteStream m r
     -> Stream (Of Movement) m r
@@ -125,8 +125,12 @@ parseCSV cfg = SC.decodeByNameWithP (parseNamedRecord' cfg) defaultDecodeOptions
 program :: Config -> FilePath -> ExceptT CsvParseException IO Result
 program cfg fp = readCSVFile cfg fp collectResult
 
+analyzer :: Analyzer
+analyzer cfg fp = fmap (first ParsingOfFileFailed) $ runExceptT $ program cfg fp
+
+
 readCSVFile
-    :: (ExceptT SC.CsvParseException IO ~ m)
+    :: ExceptT SC.CsvParseException IO ~ m
     => Config
     -> FilePath
     -> ( Stream
@@ -170,7 +174,7 @@ logS :: (MonadIO m, Show a) => Stream (Of a) m r -> Stream (Of a) m r
 logS = S.store S.print
 
 foldDays
-    :: (Monad m)
+    :: Monad m
     => S.Stream (Of Movement) m r
     -> S.Stream (Of (Day, Value)) m r
 foldDays s = do

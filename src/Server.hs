@@ -8,9 +8,12 @@ import Compute
     , parseCSV
     , readCSVFile
     )
+import Control.Concurrent.STM
 import Data.Aeson (ToJSON (..), object)
 import Data.Map.Strict qualified as Map
 import Data.String (IsString (..), String)
+import Logic.Interpreter.Synchronous (ServerState, StateConfig (..), emptyServerState)
+import Logic.Serve (StateAPI, serveState)
 import Network.Wai.Handler.Warp
     ( defaultSettings
     , runSettings
@@ -72,10 +75,13 @@ import Streaming.Cassava (CsvParseException)
 import Streaming.Servant ()
 import Types
     ( Config (Config, amountField, dateField, numberFormat)
+    , Cookie (..)
+    , CookieGen (..)
     , Giacenza (Giacenza)
     , NumberFormatKnown (..)
     , Result (..)
     , Saldo (Saldo)
+    , StoragePath (..)
     , Value (Value)
     , Year (Year)
     , parseNumberFormat
@@ -98,6 +104,7 @@ type API =
             :> Post '[HTML] RawHtml
         :<|> Get '[HTML] (Headers '[Header "Set-Cookie" Text] RawHtml)
         :<|> "about" :> Get '[HTML] RawHtml
+        :<|> StateAPI
 
 instance ToJSON Result where
     toJSON (Result m) = toJSON $ do
@@ -134,12 +141,15 @@ instance FromMultipart Tmp GiacenzaInput where
             <*> do
                 fdPayload <$> lookupFile "filename" multipartData
 
-server :: Text -> Server API
-server prefix =
+type StateVar = TVar (CookieGen, ServerState)
+
+server :: StateVar -> Text -> Server API
+server stateVar prefix =
     giacenza
         :<|> form
         :<|> getForm
         :<|> pure (page' About)
+        :<|> serveState (StateConfig $ StoragePath ".") stateVar
   where
     page' = Page.page prefix
     giacenza dateField amountField numberFormat body =
@@ -180,8 +190,8 @@ liftToCsvException = lift
 myApi :: Proxy API
 myApi = Proxy
 
-app :: Text -> Application
-app prefix =
+app :: StateVar -> Text -> Application
+app stateVar prefix =
     let
         size10MB = 10_000_000
         multipartOpts =
@@ -193,7 +203,10 @@ app prefix =
                 }
         context = multipartOpts :. EmptyContext
     in
-        serveWithContext myApi context $ server prefix
+        serveWithContext myApi context $ server stateVar prefix
+
+cookieGen :: CookieGen
+cookieGen = CookieGen (Cookie "true") cookieGen
 
 runServer
     :: Text
@@ -203,12 +216,14 @@ runServer
     -> String
     -- ^ host
     -> IO ()
-runServer prefix port host = withStdoutLogger $ \aplogger -> do
-    let settings =
-            setPort port
-                $ setHost (fromString host)
-                $ setLogger aplogger defaultSettings
-    runSettings settings $ app prefix
+runServer prefix port host = do
+    stateVar <- newTVarIO (cookieGen, emptyServerState)
+    withStdoutLogger $ \aplogger -> do
+        let settings =
+                setPort port
+                    $ setHost (fromString host)
+                    $ setLogger aplogger defaultSettings
+        runSettings settings $ app stateVar prefix
 
 instance FromHttpApiData NumberFormatKnown where
     parseUrlPiece "european" = Right European

@@ -51,6 +51,8 @@ library
       Logic.Interpreter.Synchronous
       Logic.Invariants
       Logic.Language
+      Logic.Serve
+      Logic.Program
       Pages.About
       Pages.Form
       Pages.Page
@@ -72,6 +74,7 @@ library
     , bytestring
     , cassava
     , containers
+    , directory
     , polysemy
     , filepath
     , foldl
@@ -84,6 +87,7 @@ library
     , servant
     , servant-multipart
     , servant-server
+    , stm 
     , streaming
     , streaming-bytestring
     , streaming-cassava

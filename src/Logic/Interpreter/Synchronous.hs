@@ -11,36 +11,69 @@ module Logic.Interpreter.Synchronous
       -- * pure interpreters
     , runPureSynchronicState
     , runPureSessionState
+    , runRecoverR
+    , runFileStorageE
+    , interpretProductionEffects
+    , StateConfig (..)
     )
 where
 
+import Control.Exception qualified as E
+import Data.ByteString qualified as B (readFile, writeFile)
 import Data.Map qualified as Map
 import Logic.Language
-    ( SessionE (..)
-    , SessionId
+    ( AnalyzerE (..)
+    , ConfigE (..)
+    , FileStorageE (..)
+    , GetCookieE (..)
+    , RecoverR (..)
+    , SessionE (..)
     , StateE (..)
+    , StateError (..)
     , StateSem
+    , getConfiguration
+    , getStoragePath
+    , storageOperationFailure
     )
 import Polysemy
-    ( Member
+    ( Embed
+    , Inspector (..)
+    , Member
     , Members
     , Sem
+    , embed
+    , getInspectorT
     , interpret
+    , interpretH
+    , pureT
+    , raise
+    , raiseUnder
+    , reinterpret
     , run
+    , runM
+    , runT
     )
+import Polysemy.Error (Error, runError, throw, try)
 import Polysemy.State (State, evalState, get, put, runState)
 import Protolude hiding (State, evalState, get, put, runState, try)
-import Types (Analysis (..), Cookie (..), CookieGen (..), FileName (..))
+import System.Directory (removeFile)
+import System.FilePath ((</>))
+import Types
+    ( Analysis (..)
+    , Analyzer
+    , Cookie (..)
+    , CookieGen (..)
+    , DownloadPath (..)
+    , FileName (..)
+    , StoragePath (..)
+    )
 
-type instance SessionId SessionState = Cookie
-
-data ServerState = ServerState
+newtype ServerState = ServerState
     { sessions :: Map Cookie SessionState
-    , cookies :: CookieGen
     }
     deriving (Eq, Show)
 
-emptyServerState :: CookieGen -> ServerState
+emptyServerState :: ServerState
 emptyServerState = ServerState mempty
 
 newtype SessionState = SessionState
@@ -52,43 +85,32 @@ emptySessionState :: SessionState
 emptySessionState = SessionState mempty
 
 runStateE
-    :: forall effs a
-     . (Members '[State ServerState] effs)
-    => StateSem SessionState effs a
+    :: forall e effs a
+     . Members '[State ServerState, RecoverR e] effs
+    => StateSem effs a
     -> Sem effs a
 runStateE = interpret $ \case
-    GetSession cookie -> do
-        ServerState{sessions, cookies} <- get
-        case Map.lookup cookie sessions of
-            Nothing -> do
-                let CookieGen cookie' next = cookies
-                put $ ServerState
-                    do Map.insert cookie' emptySessionState sessions
-                    do next
-                pure emptySessionState
-            Just x -> pure x
-    NewSession -> do
-        ServerState{sessions, cookies} <- get
-        let CookieGen cookie' f = cookies
-        put $ ServerState
-            do Map.insert cookie' emptySessionState sessions
-            do f
-        pure cookie'
+    {-     NewSession -> do
+            ServerState{sessions, cookies} <- get
+            let CookieGen cookie' f = cookies
+            put $ ServerState
+                do Map.insert cookie' emptySessionState sessions
+                do f
+            pure cookie' -}
     DeleteSession cookie -> do
-        ServerState{sessions, cookies} <- get
+        ServerState{sessions} <- get
         let sessions' = Map.delete cookie sessions
-        put $ ServerState sessions' cookies
+        put $ ServerState sessions'
     WithSession cookie q -> do
-        ServerState{sessions, cookies} <- get
+        ServerState{sessions} <- get
         let session = fromMaybe emptySessionState (Map.lookup cookie sessions)
-        (session', x) <- runState session . runSessionE $ q
-        put $ ServerState (Map.insert cookie session' sessions) cookies
+        (session', x) <- runState session . runSessionE @e . raiseUnder $ q
+        put $ ServerState (Map.insert cookie session' sessions)
         pure x
 
 runSessionE
-    :: forall effs a
-     . ( Member (State SessionState) effs
-       )
+    :: forall e effs a
+     . (Member (State SessionState) effs, Member (RecoverR e) effs)
     => Sem (SessionE ': effs) a
     -> Sem effs a
 runSessionE = interpret $ \case
@@ -98,56 +120,79 @@ runSessionE = interpret $ \case
     GetFile fileName -> do
         SessionState{files} <- get
         pure $ fromMaybe FileAbsent $ Map.lookup fileName files
-    AddFile path -> do
+    AddFile fileName -> do
         SessionState{files} <- get
-        let fileName = FileName $ hash path
         put $ SessionState $ Map.insert fileName NotDone files
-        pure fileName
+    SetConfig fileName config -> do
+        SessionState{files} <- get
+        put $ SessionState $ Map.insert fileName (Configured config) files
     SetResult fileName result -> do
         SessionState{files} <- get
-        put $ SessionState $ Map.insert fileName (Success result) files
+        configuration <- runSessionE @e $ getConfiguration @e fileName
+        put
+            $ SessionState
+            $ Map.insert fileName (Success result configuration) files
     SetFailure fileName failure -> do
+        configuration <- runSessionE @e $ getConfiguration @e fileName
         SessionState{files} <- get
-        put $ SessionState $ Map.insert fileName (Failed failure) files
+        put
+            $ SessionState
+            $ Map.insert fileName (Failed failure configuration) files
     DeleteFile fileName -> do
         SessionState{files} <- get
         put $ SessionState $ Map.delete fileName files
 
 runPureSynchronicState
-    :: CookieGen
-    -> StateSem SessionState '[State ServerState] a
-    -> a
-runPureSynchronicState cg = run . evalState (emptyServerState cg) . runStateE
+    :: forall e a
+     . StateSem '[State ServerState, RecoverR e, Error (StateError e)] a
+    -> Either (StateError e) a
+runPureSynchronicState = run . runError . runRecoverR . evalState emptyServerState . runStateE @e
 
 runPureSessionState
-    :: Sem '[SessionE, State SessionState] a
-    -> a
-runPureSessionState = run . evalState emptySessionState . runSessionE
+    :: forall e a
+     . Sem '[SessionE, State SessionState, RecoverR e, Error (StateError e)] a
+    -> Either (StateError e) a
+runPureSessionState =
+    run
+        . runError
+        . runRecoverR
+        . evalState emptySessionState
+        . runSessionE @e
 
-{- runSessionTimeE
-    :: forall t effs a
-     . ( Member (State (ServerState t)) effs
-       , Member RecoverR effs
-       )
-    => Sem (SessionTimeE t : effs) a
-    -> Sem effs a
-runSessionTimeE = interpret $ \case
-    UpdateTime t -> onLocalSession
-        $ \put' s -> do
-            put' $ s{time = t}
-    GetTime -> onLocalSession
-        $ \_ SessionState{time} -> pure time
-
-runTimeIOE
-    :: (Member (Embed IO) r)
-    => Sem (TimeE UTCTime : r) a
+runFileStorageE
+    :: Members '[Embed IO, ConfigE, RecoverR IOException] r
+    => Sem (FileStorageE : r) a
     -> Sem r a
-runTimeIOE = interpret $ \case
-    GetCurrentTime -> embed IO.getCurrentTime
+runFileStorageE = interpret $ \case
+    GetFilePath name -> do
+        tmp <- getStoragePath
+        pure $ storagePath tmp name
+    PutFilePath name (DownloadPath origin) -> do
+        tmp <- getStoragePath
+        let StoragePath path = storagePath tmp name
+        embed $ B.writeFile path =<< B.readFile origin
+    DeleteFilePath name -> do
+        tmp <- getStoragePath
+        let StoragePath path = storagePath tmp name
+        result <- embed $ E.try @E.IOException $ removeFile path
+        case result of
+            Left (e :: IOException) -> storageOperationFailure name e
+            Right r -> pure r
 
-runRecoverR :: (Member (Error StateError) r) => Sem (RecoverR : r) a -> Sem r a
+storagePath :: StoragePath -> FileName -> StoragePath
+storagePath (StoragePath path) (FileName fn) = StoragePath $ path </> show fn
+
+runRecoverR
+    :: forall e r a
+     . Member (Error (StateError e)) r
+    => Sem (RecoverR e : r) a
+    -> Sem r a
 runRecoverR = interpretH $ \case
-    NoSession -> throw ErrNoSession
+    StorageOperationFailure fileName e -> throw $ ErrStorageOperation fileName e
+    FileNotConfigured fileName ->
+        throw @(StateError e)
+            $ ErrFileNotConfigured fileName
+    NoSession -> throw @(StateError e) ErrNoSession
     Recover m -> do
         m' <- runT m
         r <- raise $ runRecoverR $ try m'
@@ -157,57 +202,63 @@ runRecoverR = interpretH $ \case
                 i <- getInspectorT
                 case inspect i r' of
                     Nothing -> panic "runRecoverR: impossible"
-                    Just r'' -> pureT $ Right r'' -}
-{- runSynchronicState
-    :: ServerState UTCTime
-    -> SynchronicState UTCTime '[Embed IO] a
-    -> IO (Either StateError (ServerState UTCTime, a))
-runSynchronicState s =
-    runM @IO
+                    Just r'' -> pureT $ Right r''
+
+newtype StateConfig = StateConfig
+    { configStoragePath :: StoragePath
+    }
+
+runConfigE :: StateConfig -> Sem (ConfigE : r) a -> Sem r a
+runConfigE StateConfig{configStoragePath} =
+    interpret $ \case
+        GetStoragePath -> pure configStoragePath
+
+runGetCookieE
+    :: Sem (GetCookieE : r) a
+    -> Sem (State (Maybe Cookie, CookieGen) ': r) a
+runGetCookieE = reinterpret $ \case
+    GetCookie -> do
+        (mcookie, CookieGen cookie' f) <- get
+        case mcookie of
+            Nothing -> do
+                put (Just cookie', f)
+                pure cookie'
+            Just cookie -> do
+                pure cookie
+
+runAnalyzeE :: Member (Embed IO) r => Analyzer -> Sem (AnalyzerE : r) a -> Sem r a
+runAnalyzeE analyzer = interpret $ \case
+    Analyze (StoragePath path) cfg -> embed $ analyzer cfg path
+
+interpretProductionEffects
+    :: forall stateEffs effs a
+     . ( effs ~ StateE stateEffs : stateEffs
+       , stateEffs
+            ~ [ State ServerState
+              , FileStorageE
+              , RecoverR IOException
+              , Error (StateError IOException)
+              , AnalyzerE
+              , GetCookieE
+              , ConfigE
+              , Embed IO
+              ]
+       )
+    => StateConfig
+    -> CookieGen
+    -> ServerState
+    -> Maybe Cookie
+    -> Analyzer
+    -> Sem effs a
+    -> IO ((Maybe Cookie, CookieGen), Either (StateError IOException) (ServerState, a))
+interpretProductionEffects cfg cg serverState mcookie analyzer =
+    runM
+        . runConfigE cfg
+        . runState (mcookie, cg)
+        . runGetCookieE
+        . runAnalyzeE analyzer
         . runError
         . runRecoverR
-        . runTimeIOE
-        . runState s
-        . runSessionTimeE
-        . runSessionE @UTCTime
-        . runServerE @UTCTime -}
-
-{- data MockTime t :: Effect where
-    SetTime :: t -> MockTime t m ()
-
-makeSem ''MockTime
-
-runMockTime
-    :: (Member (State t) r)
-    => Sem (MockTime t : r) a
-    -> Sem r a
-runMockTime = interpret $ \case
-    SetTime time -> put time
-
-runTimeWithMockTime
-    :: (Member (State t) r)
-    => Sem (TimeE t : r) a
-    -> Sem r a
-runTimeWithMockTime = interpret $ \case
-    GetCurrentTime -> get
-
-type SynchronicStateWithMockTime t
-    = SynchronicState t '[MockTime t, State t]
-
-runSynchronicStateWithMockTime
-    :: forall t a
-     . ServerState t
-    -> t
-    -> SynchronicStateWithMockTime t a
-    -> Either StateError (ServerState t, a)
-runSynchronicStateWithMockTime s t =
-    run
-        . evalState t
-        . runMockTime
-        . runError
-        . runRecoverR
-        . runTimeWithMockTime
-        . runState s
-        . runSessionTimeE @t
-        . runSessionE @t
-        . runServerE @t -}
+        . runFileStorageE
+        . runState serverState
+        . runStateE @IOException
