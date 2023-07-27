@@ -27,3 +27,6 @@ aboutH = do
 
     p_
         "The result is a table with the average deposit and the balance for each year."
+    p_
+        "This page use a cookie to store your data and preferences. The cookie is not used for any other purpose."
+    p_ "Deleting the cookie will delete all your data and preferences."

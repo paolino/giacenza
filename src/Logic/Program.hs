@@ -1,4 +1,5 @@
-{-# LANGUAGE ConstraintKinds, AllowAmbiguousTypes #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE ConstraintKinds #-}
 
 module Logic.Program where
 
@@ -6,25 +7,29 @@ import Logic.Language
     ( AnalyzerE
     , FileStorageE
     , GetCookieE
+    , RecoverR
     , SessionE
     , StateE
     , addFile
     , analyze
     , deleteFile
     , deleteSession
+    , getConfiguration
     , getCookie
     , getFile
     , getFilePath
     , getFiles
     , putFilePath
+    , setConfig
     , setFailure
     , setResult
-    , withSession, getConfiguration, RecoverR
+    , withSession
     )
 import Polysemy (Member, Members, Sem)
 import Protolude
 import Types
     ( Analysis (..)
+    , Config
     , Cookie (..)
     , DownloadPath
     , FileName (..)
@@ -62,6 +67,11 @@ addFileP name input = withCurrentSession @effs do
     name' <- uniqueFilename name
     putFilePath name' input
     addFile name
+
+-- | Delete a file from the current session
+deleteFileP :: Member GetCookieE r => FileName -> Sem (StateEffs r) ()
+deleteFileP name = withCurrentSession do
+    deleteFile name
 
 -- | List all files with their analysis status in the current session
 listFilesP
@@ -131,3 +141,13 @@ restoreSessionP files = withCurrentSession $ do
         case analysis of
             Left err -> setFailure name err
             Right success -> setResult name success
+
+-- | Configure a not done file
+configureFileP
+    :: forall effs
+     . Members '[GetCookieE] effs
+    => FileName
+    -> Config
+    -> Sem (StateEffs effs) ()
+configureFileP name cfg = withCurrentSession do
+    setConfig name cfg

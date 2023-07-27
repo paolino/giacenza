@@ -37,7 +37,9 @@ import Streaming.NonEmpty qualified as NES
 import Streaming.Prelude qualified as S
 import Streaming.With (withBinaryFileContents)
 import Types
-    ( Config (Config)
+    ( Analyzer
+    , Config (Config)
+    , Failure (ParsingOfFileFailed)
     , Giacenza (Giacenza)
     , Movement (Movement)
     , NumberFormat (..)
@@ -45,7 +47,7 @@ import Types
     , Saldo (Saldo)
     , Value (Value)
     , Year (Year)
-    , numberFormatOf, Analyzer, Failure (ParsingOfFileFailed)
+    , numberFormatOf
     )
 
 parseValue :: NumberFormat -> ByteString -> Either String Value
@@ -127,7 +129,6 @@ program cfg fp = readCSVFile cfg fp collectResult
 
 analyzer :: Analyzer
 analyzer cfg fp = fmap (first ParsingOfFileFailed) $ runExceptT $ program cfg fp
-
 
 readCSVFile
     :: ExceptT SC.CsvParseException IO ~ m

@@ -2,18 +2,11 @@
 
 module Server (runServer) where
 
-import Compute
-    ( analyzeData
-    , collectResult
-    , parseCSV
-    , readCSVFile
-    )
-import Control.Concurrent.STM
-import Data.Aeson (ToJSON (..), object)
-import Data.Map.Strict qualified as Map
+import Control.Concurrent.STM (TVar, newTVarIO)
 import Data.String (IsString (..), String)
+import Data.Text (pack)
 import Logic.Interpreter.Synchronous (ServerState, StateConfig (..), emptyServerState)
-import Logic.Serve (StateAPI, serveState)
+import Logic.Serve (StateHtml, mkSynchronicResponder, serveStateHtml)
 import Network.Wai.Handler.Warp
     ( defaultSettings
     , runSettings
@@ -25,8 +18,7 @@ import Network.Wai.Logger (withStdoutLogger)
 import Network.Wai.Parse (defaultParseRequestBodyOptions, setMaxRequestFileSize)
 import Pages.Page qualified as Page
 import Pages.Types
-    ( Feedback (..)
-    , HTML
+    ( HTML
     , Page (..)
     , RawHtml
     )
@@ -34,179 +26,67 @@ import Protolude hiding (Handler)
 import Servant
     ( Context (..)
     , FromHttpApiData (..)
-    , Header
-    , Headers
-    , addHeader
     , serveWithContext
     , (:<|>) (..)
-    , (:>)
     )
 import Servant.API
     ( Get
-    , JSON
-    , NoFraming
-    , OctetStream
-    , Post
-    , QueryParam'
-    , Required
-    , StreamBody
     )
 import Servant.Multipart
-    ( FileData (fdFileName, fdPayload)
-    , FromMultipart (..)
-    , MultipartData
-    , MultipartForm
-    , MultipartOptions (generalOptions)
+    ( MultipartOptions (generalOptions)
     , Tmp
     , defaultMultipartOptions
-    , lookupFile
-    , lookupInput
     )
 import Servant.Server
     ( Application
-    , Handler (..)
-    , Server
-    , ServerError (..)
-    , err406
     )
-import Streaming (MFunctor (hoist))
-import Streaming.ByteString (ByteStream)
-import Streaming.Cassava (CsvParseException)
 import Streaming.Servant ()
+import System.Random (StdGen, getStdGen, randomRs, split)
 import Types
-    ( Config (Config, amountField, dateField, numberFormat)
+    ( Config (..)
     , Cookie (..)
     , CookieGen (..)
-    , Giacenza (Giacenza)
+    , FileName (..)
     , NumberFormatKnown (..)
-    , Result (..)
-    , Saldo (Saldo)
     , StoragePath (..)
-    , Value (Value)
-    , Year (Year)
-    , parseNumberFormat
     )
+import Web.Internal.FormUrlEncoded (FromForm (..), parseUnique)
 
 type API =
-    "deposit"
-        :> QueryParam' '[Required] "date-name" Text
-        :> QueryParam' '[Required] "amount-name" Text
-        :> QueryParam' '[Required] "number-format" NumberFormatKnown
-        :> StreamBody NoFraming OctetStream (ByteStream IO ()) -- (SourceIO BS.ByteString)
-        :> Post '[JSON] Result
-        :<|> "deposit"
-            :> "form"
-            -- :> QueryParam' '[Required] "year" Integer
-            -- :> QueryParam' '[Required] "date-name" Text
-            -- :> QueryParam' '[Required] "amount-name" Text
-            -- :> QueryParam' '[Required] "number-format" NumberFormat
-            :> MultipartForm Tmp GiacenzaInput
-            :> Post '[HTML] RawHtml
-        :<|> Get '[HTML] (Headers '[Header "Set-Cookie" Text] RawHtml)
-        :<|> "about" :> Get '[HTML] RawHtml
-        :<|> StateAPI
-
-instance ToJSON Result where
-    toJSON (Result m) = toJSON $ do
-        (Year y, (Saldo (Value s), Giacenza (Value g))) <- Map.toList m
-        return
-            ( y
-            , object
-                [ "giacenza" .= toJSON g
-                , "balance" .= toJSON s
-                ]
-            )
-      where
-        (.=) = (,)
-
-data GiacenzaInput = GiacenzaInput
-    { dateField :: Text
-    , amountField :: Text
-    , numberFormat :: NumberFormatKnown
-    , clientFilename :: Text
-    , path :: FilePath
-    }
-
-instance FromMultipart Tmp GiacenzaInput where
-    fromMultipart :: MultipartData Tmp -> Either String GiacenzaInput
-    fromMultipart multipartData =
-        GiacenzaInput
-            <$> lookupInput "date-name" multipartData
-            <*> lookupInput "amount-name" multipartData
-            <*> do
-                lookupInput "number-format" multipartData
-                    >>= parseNumberFormat
-            <*> do
-                fdFileName <$> lookupFile "filename" multipartData
-            <*> do
-                fdPayload <$> lookupFile "filename" multipartData
+    Get '[HTML] RawHtml
+        :<|> StateHtml
 
 type StateVar = TVar (CookieGen, ServerState)
 
-server :: StateVar -> Text -> Server API
-server stateVar prefix =
-    giacenza
-        :<|> form
-        :<|> getForm
-        :<|> pure (page' About)
-        :<|> serveState (StateConfig $ StoragePath ".") stateVar
-  where
-    page' = Page.page prefix
-    giacenza dateField amountField numberFormat body =
-        Handler
-            $ withExceptT convertCsvParseException
-            $ collectResult
-            $ analyzeData
-            $ parseCSV
-                Config{..}
-            $ hoist liftToCsvException body
-    form GiacenzaInput{..} = Handler $ do
-        result <-
-            liftIO
-                $ runExceptT
-                $ readCSVFile
-                    (Config numberFormat dateField amountField)
-                    path
-                    collectResult
-        pure
-            $ case result of
-                Right m -> page' $ Positive Feedback{..} m
-                Left exc -> page' $ Negative Feedback{..} $ show exc
-
-    getForm = pure $ addHeader (giacenzaCookie <> "=" <> cookie) $ page' Home
-
-cookie :: Text
-cookie = "true"
-
-giacenzaCookie :: Text
-giacenzaCookie = "giacenza"
-
-convertCsvParseException :: CsvParseException -> ServerError
-convertCsvParseException exc = err406{errBody = "CSV parse error:" <> show exc}
-
-liftToCsvException :: IO a -> ExceptT CsvParseException IO a
-liftToCsvException = lift
-
-myApi :: Proxy API
-myApi = Proxy
-
 app :: StateVar -> Text -> Application
 app stateVar prefix =
-    let
-        size10MB = 10_000_000
-        multipartOpts =
-            (defaultMultipartOptions (Proxy :: Proxy Tmp))
-                { generalOptions =
-                    setMaxRequestFileSize
-                        size10MB
-                        defaultParseRequestBodyOptions
-                }
-        context = multipartOpts :. EmptyContext
-    in
-        serveWithContext myApi context $ server stateVar prefix
+    serveWithContext (Proxy @API) context $ about :<|> stateFulStuff
+  where
+    about = pure $ page' About
+    stateFulStuff = serveStateHtml
+        do page'
+        do
+            mkSynchronicResponder
+                do stateVar
+                do StateConfig $ StoragePath "."
+    page' = Page.page prefix
 
-cookieGen :: CookieGen
-cookieGen = CookieGen (Cookie "true") cookieGen
+context :: Context '[MultipartOptions Tmp]
+context = multipartOpts :. EmptyContext
+  where
+    size10MB = 10_000_000
+    multipartOpts =
+        (defaultMultipartOptions (Proxy @Tmp))
+            { generalOptions =
+                setMaxRequestFileSize
+                    size10MB
+                    defaultParseRequestBodyOptions
+            }
+cookieGen :: StdGen -> CookieGen
+cookieGen = fix \go seed ->
+    CookieGen (mkCookie seed) $ go $ snd $ split seed
+  where
+    mkCookie = Cookie . pack . take 16 . randomRs ('a', 'z')
 
 runServer
     :: Text
@@ -217,7 +97,8 @@ runServer
     -- ^ host
     -> IO ()
 runServer prefix port host = do
-    stateVar <- newTVarIO (cookieGen, emptyServerState)
+    cookieG <- getStdGen <&> cookieGen
+    stateVar <- newTVarIO (cookieG, emptyServerState)
     withStdoutLogger $ \aplogger -> do
         let settings =
                 setPort port
@@ -229,3 +110,13 @@ instance FromHttpApiData NumberFormatKnown where
     parseUrlPiece "european" = Right European
     parseUrlPiece "american" = Right American
     parseUrlPiece _ = Left "Invalid number format"
+
+instance FromHttpApiData FileName where
+    parseUrlPiece = Right . FileName
+
+instance FromForm Config where
+    fromForm f = do
+        nf <- parseUnique "number-format" f
+        dateField <- parseUnique "date-name" f
+        amountField <- parseUnique "amount-name" f
+        pure $ Config nf dateField amountField

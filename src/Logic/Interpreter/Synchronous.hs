@@ -15,6 +15,8 @@ module Logic.Interpreter.Synchronous
     , runFileStorageE
     , interpretProductionEffects
     , StateConfig (..)
+    , SynchronicState
+    , SynchronicStateBase
     )
 where
 
@@ -86,17 +88,10 @@ emptySessionState = SessionState mempty
 
 runStateE
     :: forall e effs a
-     . Members '[State ServerState, RecoverR e] effs
+     . Members '[RecoverR e] effs
     => StateSem effs a
-    -> Sem effs a
-runStateE = interpret $ \case
-    {-     NewSession -> do
-            ServerState{sessions, cookies} <- get
-            let CookieGen cookie' f = cookies
-            put $ ServerState
-                do Map.insert cookie' emptySessionState sessions
-                do f
-            pure cookie' -}
+    -> Sem (State ServerState ': effs) a
+runStateE = reinterpret $ \case
     DeleteSession cookie -> do
         ServerState{sessions} <- get
         let sessions' = Map.delete cookie sessions
@@ -104,7 +99,12 @@ runStateE = interpret $ \case
     WithSession cookie q -> do
         ServerState{sessions} <- get
         let session = fromMaybe emptySessionState (Map.lookup cookie sessions)
-        (session', x) <- runState session . runSessionE @e . raiseUnder $ q
+        (session', x) <-
+            raise
+                . runState session
+                . runSessionE @e
+                . raiseUnder
+                $ q
         put $ ServerState (Map.insert cookie session' sessions)
         pure x
 
@@ -144,13 +144,24 @@ runSessionE = interpret $ \case
 
 runPureSynchronicState
     :: forall e a
-     . StateSem '[State ServerState, RecoverR e, Error (StateError e)] a
+     . StateSem '[RecoverR e, Error (StateError e)] a
     -> Either (StateError e) a
-runPureSynchronicState = run . runError . runRecoverR . evalState emptyServerState . runStateE @e
+runPureSynchronicState =
+    run
+        . runError
+        . runRecoverR
+        . evalState emptyServerState
+        . runStateE @e
 
 runPureSessionState
     :: forall e a
-     . Sem '[SessionE, State SessionState, RecoverR e, Error (StateError e)] a
+     . Sem
+        '[ SessionE
+         , State SessionState
+         , RecoverR e
+         , Error (StateError e)
+         ]
+        a
     -> Either (StateError e) a
 runPureSessionState =
     run
@@ -230,26 +241,25 @@ runAnalyzeE :: Member (Embed IO) r => Analyzer -> Sem (AnalyzerE : r) a -> Sem r
 runAnalyzeE analyzer = interpret $ \case
     Analyze (StoragePath path) cfg -> embed $ analyzer cfg path
 
+type SynchronicStateBase =
+    [ FileStorageE
+    , RecoverR IOException
+    , Error (StateError IOException)
+    , AnalyzerE
+    , GetCookieE
+    , ConfigE
+    , Embed IO
+    ]
+type SynchronicState = StateE SynchronicStateBase : SynchronicStateBase
+
 interpretProductionEffects
-    :: forall stateEffs effs a
-     . ( effs ~ StateE stateEffs : stateEffs
-       , stateEffs
-            ~ [ State ServerState
-              , FileStorageE
-              , RecoverR IOException
-              , Error (StateError IOException)
-              , AnalyzerE
-              , GetCookieE
-              , ConfigE
-              , Embed IO
-              ]
-       )
-    => StateConfig
+    :: forall a
+     . StateConfig
     -> CookieGen
     -> ServerState
     -> Maybe Cookie
     -> Analyzer
-    -> Sem effs a
+    -> Sem SynchronicState a
     -> IO ((Maybe Cookie, CookieGen), Either (StateError IOException) (ServerState, a))
 interpretProductionEffects cfg cg serverState mcookie analyzer =
     runM

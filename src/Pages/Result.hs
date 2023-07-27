@@ -26,7 +26,7 @@ resultH :: Text -> Result -> Html ()
 resultH filename (Result m) =
     div_
         $ do
-            h3_ [class_ "mb-3 border-bottom"] "Analysys"
+            h3_ [class_ "mb-3 border-bottom"] "Analysis"
             h5_ $ toHtml @Text filename
             table_ [class_ "table table-striped"] $ do
                 tr_ $ do

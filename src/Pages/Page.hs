@@ -1,5 +1,6 @@
 module Pages.Page where
 
+import Control.Lens.Extras (is)
 import Lucid
     ( Attribute
     , Html
@@ -31,23 +32,16 @@ import Lucid
     , ul_
     )
 import Pages.About (aboutH)
-import Pages.Form (formH)
-import Pages.Result (resultH)
+import Pages.AddFile (addFileH)
+import Pages.ListFiles (listFilesH)
 import Pages.Types
-    ( Feedback
-        ( Feedback
-        , amountField
-        , clientFilename
-        , dateField
-        , numberFormat
-        )
-    , Page (..)
+    ( Page (..)
     , RawHtml (RawHtml)
+    , _About
+    , _AddFile
+    , _ListFiles
     )
 import Protolude hiding (for_)
-import Types
-    ( NumberFormatKnown (..)
-    )
 
 pageH :: Text -> Page -> Html () -> Html ()
 pageH prefix p body = html_ [term "data-bs-theme" "dark"]
@@ -84,9 +78,9 @@ pageH prefix p body = html_ [term "data-bs-theme" "dark"]
                     [class_ "footer"]
                     footerH
 
-activePageH :: Eq a => a -> a -> [Attribute] -> [Attribute]
-activePageH p q =
-    if p == q
+activePageH :: Bool -> [Attribute] -> [Attribute]
+activePageH c =
+    if c
         then (<> [class_ "nav-link active", term "aria-current" "page"])
         else (<> [class_ "nav-link"])
 
@@ -95,24 +89,33 @@ headH p prefix = do
     header_ [class_ "d-flex justify-content-center py-3"] $ do
         ul_ [class_ "nav nav-pills"] $ do
             li_ [class_ "nav-item"] $ do
-                a_ (activePageH p Home [href_ $ prefix <> "/"]) "Home"
+                a_
+                    ( activePageH
+                        (is _ListFiles p)
+                        [href_ $ prefix <> "/file/all"]
+                    )
+                    "Your files"
             li_ [class_ "nav-item"] $ do
-                a_ (activePageH p About [href_ $ prefix <> "/about"]) "About"
+                a_
+                    ( activePageH
+                        (is _AddFile p)
+                        [href_ $ prefix <> "/file"]
+                    )
+                    "Add a file"
+            li_ [class_ "nav-item"] $ do
+                a_
+                    ( activePageH
+                        (is _About p)
+                        [href_ $ prefix <> "/"]
+                    )
+                    "About"
 
 page :: Text -> Page -> RawHtml
 page prefix p = RawHtml $ renderBS $ case p of
-    Home -> pageH prefix p $ formH prefix Nothing Nothing European
     About -> pageH prefix p aboutH
-    Positive Feedback{..} result -> pageH prefix Home $ do
-        div_ [class_ "row"]
-            $ resultH clientFilename result
-        div_ [class_ "row mt-5"]
-            $ formH prefix (Just dateField) (Just amountField) numberFormat
-    Negative Feedback{..} msg -> pageH prefix Home $ do
-        div_ [class_ "row"]
-            $ reportExcH msg
-        div_ [class_ "row mt-5"]
-            $ formH prefix (Just dateField) (Just amountField) numberFormat
+    ListFiles as -> pageH prefix p $ do
+        listFilesH prefix as
+    AddFile -> pageH prefix p $ addFileH prefix
 
 footerH :: Html ()
 footerH =
@@ -134,7 +137,7 @@ footerH =
             div_ [class_ "col d-flex align-items-center"]
                 $ div_
                     [class_ "mb-3 mb-md-0 text-body-secondary"]
-                    "Powered by Haskell, Servant, Lucid, Streaming, Bootstrap"
+                    "Powered by Haskell, Servant, Polysemy, Lucid, Streaming, Bootstrap"
 
 reportExcH :: Text -> Html ()
 reportExcH msg = do

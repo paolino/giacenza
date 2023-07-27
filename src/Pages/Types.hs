@@ -1,10 +1,15 @@
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE NoImplicitPrelude #-}
+
 module Pages.Types where
 
+import Control.Lens.TH
 import Data.ByteString.Lazy qualified as Lazy
 import Network.HTTP.Media ((//), (/:))
 import Protolude
 import Servant (Accept (..), MimeRender (..))
-import Types (NumberFormatKnown, Result)
+import Types (Analysis, FileName, NumberFormatKnown)
 
 data HTML = HTML
 
@@ -25,8 +30,9 @@ data Feedback = Feedback
     deriving (Eq, Show)
 
 data Page
-    = Home
-    | About
-    | Positive Feedback Result
-    | Negative Feedback Text
+    = About
+    | ListFiles [(FileName, Analysis)]
+    | AddFile
     deriving (Eq)
+
+makePrisms ''Page

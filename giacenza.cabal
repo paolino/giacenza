@@ -58,6 +58,8 @@ library
       Pages.Page
       Pages.Result
       Pages.Types
+      Pages.AddFile
+      Pages.ListFiles
       Server
       Streaming.Servant
       Types
@@ -74,20 +76,23 @@ library
     , bytestring
     , cassava
     , containers
+    , cookie
     , directory
     , polysemy
     , filepath
     , foldl
     , hashable
     , http-media
+    , http-api-data
     , lens
     , lucid
     , mtl
     , protolude
+    , random
     , servant
     , servant-multipart
     , servant-server
-    , stm 
+    , stm
     , streaming
     , streaming-bytestring
     , streaming-cassava

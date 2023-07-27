@@ -2,12 +2,12 @@
 
 module Types where
 
+import Data.Aeson (ToJSON (..))
 import Data.String (String)
 import Data.Time (Day)
 import Protolude
 import Protolude.Base (Show (..))
 import Streaming.Cassava (CsvParseException)
-import Data.Aeson (ToJSON (..))
 
 newtype Value = Value {unValue :: Double}
     deriving (Num, Show, Fractional, Eq)
