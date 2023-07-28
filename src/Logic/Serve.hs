@@ -8,8 +8,8 @@ import Control.Concurrent.STM (TVar, readTVarIO, writeTVar)
 import Data.List (lookup)
 import Data.String (String)
 import Logic.Interpreter.Synchronous (ServerState, StateConfig, SynchronicState, interpretProductionEffects)
-import Logic.Program (addFileP, analyzeFileP, configureFileP, listFilesP)
-import Pages.Types (HTML, Page (AddFile, ListFiles), RawHtml)
+import Logic.Program (addFileP, analyzeFileP, configureFileP, deleteFileP, listFilesP, resetFileP)
+import Pages.Types (HTML, Page (ListFiles), RawHtml)
 import Polysemy (Sem)
 import Protolude hiding (Handler)
 import Servant
@@ -74,9 +74,8 @@ type CookieResponseHtml
 
 type StateHtml' =
     -- Form to upload a file
-    CookieResponseHtml Get
-        --  List of files
-        :<|> "all" :> CookieResponseHtml Get
+    --  List of files
+    "all" :> CookieResponseHtml Get
         -- Add a file
         :<|> MultipartForm Tmp AddFileS
             :> CookieResponseHtml Post
@@ -87,6 +86,12 @@ type StateHtml' =
             :> CookieResponseHtml Post
         -- Analyze a file
         :<|> "analyze"
+            :> QueryParam "filename" FileName
+            :> CookieResponseHtml Post
+        :<|> "reconfigure"
+            :> QueryParam "filename" FileName
+            :> CookieResponseHtml Post
+        :<|> "delete"
             :> QueryParam "filename" FileName
             :> CookieResponseHtml Post
 
@@ -103,31 +108,41 @@ type Responder a =
     -- ^ computation over the state
     -> Handler (CookieResponse a)
 
-serveStateHtml :: (Page -> RawHtml) -> Responder RawHtml -> Server StateHtml
+serveStateHtml :: (Maybe FileName -> Page -> RawHtml) -> Responder RawHtml -> Server StateHtml
 serveStateHtml mkPage respond' =
-    respondGetFile
-        :<|> respondListFiles
+    respondListFiles
         :<|> respondAddFile
         :<|> respondConfigureFile
         :<|> respondAnalyzeFile
+        :<|> respondReconfigureFile
+        :<|> respondDeleteFile
   where
-    listFilesPage = listFilesP <&> mkPage . ListFiles
-    respondListFiles mc = respond' mc listFilesPage
-    respondGetFile mc = respond' mc $ pure $ mkPage AddFile
+    listFilesPage focus = listFilesP <&> mkPage focus . ListFiles
+    respondListFiles mc = respond' mc $ listFilesPage Nothing
     respondAddFile mc (AddFileS fn dp) = respond' mc $ do
         addFileP fn dp
-        listFilesPage
+        listFilesPage $ Just fn
     respondConfigureFile mc (Just fn) cfg' = respond' mc $ do
         configureFileP fn cfg'
         analyzeFileP @IOException fn
-        listFilesPage
+        listFilesPage $ Just fn
     respondConfigureFile mc Nothing _ = respond' mc do
-        listFilesPage
+        listFilesPage Nothing
     respondAnalyzeFile mc (Just fn) = respond' mc $ do
         analyzeFileP @IOException fn
-        listFilesPage
+        listFilesPage $ Just fn
     respondAnalyzeFile mc Nothing = respond' mc do
-        listFilesPage
+        listFilesPage Nothing
+    respondReconfigureFile mc (Just fn) = respond' mc $ do
+        resetFileP fn
+        listFilesPage $ Just fn
+    respondReconfigureFile mc Nothing = respond' mc do
+        listFilesPage Nothing
+    respondDeleteFile mc (Just fn) = respond' mc $ do
+        deleteFileP fn
+        listFilesPage Nothing
+    respondDeleteFile mc Nothing = respond' mc do
+        listFilesPage Nothing
 
 mkSynchronicResponder
     :: TVar (CookieGen, ServerState)

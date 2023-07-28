@@ -13,6 +13,7 @@ import Logic.Language
     , addFile
     , analyze
     , deleteFile
+    , deleteFilePath
     , deleteSession
     , getConfiguration
     , getCookie
@@ -69,8 +70,13 @@ addFileP name input = withCurrentSession @effs do
     addFile name
 
 -- | Delete a file from the current session
-deleteFileP :: Member GetCookieE r => FileName -> Sem (StateEffs r) ()
+deleteFileP
+    :: (Member GetCookieE r, Member FileStorageE r)
+    => FileName
+    -> Sem (StateEffs r) ()
 deleteFileP name = withCurrentSession do
+    name' <- uniqueFilename name
+    deleteFilePath name'
     deleteFile name
 
 -- | List all files with their analysis status in the current session
@@ -151,3 +157,12 @@ configureFileP
     -> Sem (StateEffs effs) ()
 configureFileP name cfg = withCurrentSession do
     setConfig name cfg
+
+-- | Set file state to NotDone
+resetFileP
+    :: forall effs
+     . Members '[GetCookieE] effs
+    => FileName
+    -> Sem (StateEffs effs) ()
+resetFileP name = withCurrentSession do
+    addFile name

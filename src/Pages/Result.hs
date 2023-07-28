@@ -6,7 +6,6 @@ import Lucid
     ( Html
     , ToHtml (toHtml)
     , class_
-    , h3_
     , table_
     , td_
     , th_

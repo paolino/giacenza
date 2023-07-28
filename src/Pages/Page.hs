@@ -38,10 +38,10 @@ import Pages.Types
     ( Page (..)
     , RawHtml (RawHtml)
     , _About
-    
     , _ListFiles
     )
 import Protolude hiding (for_)
+import Types (FileName)
 
 pageH :: Text -> Page -> Html () -> Html ()
 pageH prefix p body = html_ [term "data-bs-theme" "dark"]
@@ -103,11 +103,11 @@ headH p prefix = do
                     )
                     "About"
 
-page :: Text -> Page -> RawHtml
-page prefix p = RawHtml $ renderBS $ case p of
+page :: Maybe FileName -> Text -> Page -> RawHtml
+page focus prefix p = RawHtml $ renderBS $ case p of
     About -> pageH prefix p aboutH
     ListFiles as -> pageH prefix p $ do
-        listFilesH prefix as
+        listFilesH focus prefix as
     AddFile -> pageH prefix p $ addFileH prefix
 
 footerH :: Html ()

@@ -3,20 +3,23 @@ module Pages.ListFiles where
 import Lucid
 
 import Data.Foldable as F ()
-import Pages.AddFile (addFileH)
+import Data.List (elemIndex)
+import Pages.AddFile (addFileH, deleteFileH, reconfigureFileH)
 import Pages.Result (resultH)
 import Protolude hiding (for_)
 import Types (Analysis (..), Config (..), FileName (..), NumberFormatKnown (..))
 
-accordionH :: [(Html (), Html ())] -> Html ()
-accordionH xs =
+accordionH :: Maybe Int -> [(Html (), Html ())] -> Html ()
+accordionH focus xs =
     div_ [class_ "accordion", id_ "mainAccordion"] $ do
         forM_ (zip [0 :: Int ..] xs) $ \(item, (k, v)) -> do
             div_ [class_ "accordion-item"] $ do
                 div_ [class_ "accordion-header", id_ ("elem" <> show item)] $ do
-                    h2_ [class_ "mb-0"] $ do
+                    h4_ [class_ "mb-0"] $ do
                         button_
-                            [ class_ "accordion-button collapsed"
+                            [ class_
+                                $ "accordion-button"
+                                    <> if Just item == focus then "" else " collapsed"
                             , type_ "button"
                             , data_ "bs-toggle" "collapse"
                             , data_ "bs-target" ("#collapse" <> show item)
@@ -26,16 +29,18 @@ accordionH xs =
                             k
                     div_
                         [ id_ ("collapse" <> show item)
-                        , class_ "accordion-collapse collapse"
+                        , class_
+                            $ "accordion-collapse collapse"
+                                <> if Just item == focus then " show" else ""
                         , term "aria-labelledby" ("elem" <> show item)
                         , term "data-parent" "#mainAccordion"
                         ]
                         $ do
                             div_ [class_ "accordion-body d-md-flex w-100"] v
 
-listFilesH :: Text -> [(FileName, Analysis)] -> Html ()
-listFilesH prefix files = do
-    accordionH
+listFilesH :: Maybe FileName -> Text -> [(FileName, Analysis)] -> Html ()
+listFilesH focus prefix files = do
+    accordionH (focus >>= \fn -> elemIndex fn (fst <$> files) <&> succ)
         $ let
             items = do
                 (FileName fn, analysis) <- files
@@ -51,7 +56,7 @@ listFilesH prefix files = do
                                 span_ [class_ "badge bg-danger ms-2 me-2"] "Failed"
                             Success _ _ -> do
                                 span_ [class_ "badge bg-success ms-2 me-2"] "Success"
-                        span_ [] $ h3_ $ toHtml fn
+                        span_ [] $ h4_ $ toHtml fn
                     v = do
                         case analysis of
                             FileAbsent -> do
@@ -61,7 +66,8 @@ listFilesH prefix files = do
                                 centeredColumn 4
                                     $ configure prefix fn Nothing Nothing American
                                 centeredColumn 4
-                                    $ pure ()
+                                    $ buttons
+                                    $ deleteFileH prefix fn
                             Configured config -> do
                                 centeredColumn 4
                                     $ renderConfiguration config
@@ -71,16 +77,35 @@ listFilesH prefix files = do
                                 centeredColumn 4
                                     $ renderConfiguration config
                                 centeredColumn 4
-                                    $ configure prefix fn Nothing Nothing American
+                                    $ buttons
+                                    $ do
+                                        reconfigureFileH prefix fn
+                                        deleteFileH prefix fn
                             Success result config -> do
                                 centeredColumn 4
                                     $ renderConfiguration config
-                                centeredColumn 6
+                                centeredColumn 4
                                     $ resultH result
+                                centeredColumn 4
+                                    $ buttons
+                                    $ do
+                                        reconfigureFileH prefix fn
+                                        deleteFileH prefix fn
+
                 pure (k, v)
-            add = (toHtml @Text "add/replace file", addFileH prefix)
+            add =
+                ( h4_ [class_ "text-center"] $ toHtml @Text "add/replace file"
+                , addFileH prefix
+                )
           in
             add : items
+
+buttons :: Html () -> Html ()
+buttons =
+    div_
+        [ class_
+            "justify-content-end d-flex align-items-end"
+        ]
 
 renderConfiguration :: Config -> Html ()
 renderConfiguration (Config nf dateField amountField) = do

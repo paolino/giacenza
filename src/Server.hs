@@ -62,14 +62,14 @@ app :: StateVar -> Text -> Application
 app stateVar prefix =
     serveWithContext (Proxy @API) context $ about :<|> stateFulStuff
   where
-    about = pure $ page' About
+    about = pure $ page' Nothing About
     stateFulStuff = serveStateHtml
         do page'
         do
             mkSynchronicResponder
                 do stateVar
                 do StateConfig $ StoragePath "."
-    page' = Page.page prefix
+    page' focus = Page.page focus prefix
 
 context :: Context '[MultipartOptions Tmp]
 context = multipartOpts :. EmptyContext

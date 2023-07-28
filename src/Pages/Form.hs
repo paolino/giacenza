@@ -9,7 +9,7 @@ import Lucid
     , enctype_
     , for_
     , form_
-    , h3_
+    , h4_
     , id_
     , input_
     , label_
@@ -56,7 +56,7 @@ formH :: Text -> Maybe Text -> Maybe Text -> NumberFormatKnown -> Html ()
 formH prefix mDateField mAmountField nf = div_ [] $ do
     let dateField' = fromMaybe "Date" mDateField
     let amountField' = fromMaybe "Amount" mAmountField
-    h3_ [class_ "mb-3 border-bottom"] "New request"
+    h4_ [class_ "mb-3 border-bottom"] "New request"
     form_
         [ method_ "POST"
         , action_ $ prefix <> "/deposit/form"
