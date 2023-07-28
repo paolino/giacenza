@@ -38,7 +38,7 @@ import Pages.Types
     ( Page (..)
     , RawHtml (RawHtml)
     , _About
-    , _AddFile
+    
     , _ListFiles
     )
 import Protolude hiding (for_)
@@ -70,7 +70,7 @@ pageH prefix p body = html_ [term "data-bs-theme" "dark"]
             pure ()
         body_ $ do
             headH p prefix
-            div_ [class_ "container"] $ do
+            div_ [class_ "container-fluid"] $ do
                 div_
                     [class_ "main"]
                     body
@@ -94,14 +94,7 @@ headH p prefix = do
                         (is _ListFiles p)
                         [href_ $ prefix <> "/file/all"]
                     )
-                    "Your files"
-            li_ [class_ "nav-item"] $ do
-                a_
-                    ( activePageH
-                        (is _AddFile p)
-                        [href_ $ prefix <> "/file"]
-                    )
-                    "Add a file"
+                    "Your space"
             li_ [class_ "nav-item"] $ do
                 a_
                     ( activePageH
@@ -122,10 +115,10 @@ footerH =
     term
         "footer_"
         [ class_
-            "d-flex flex-wrap justify-content-between align-items-center py-3 my-4 border-top"
+            "d-md-flex flex-wrap justify-content-between align-items-center py-3 ms-4 border-top"
         ]
         $ do
-            div_ [class_ "col d-flex align-items-center"]
+            div_ [class_ "col d-md-flex align-items-center"]
                 $ do
                     ul_ [class_ "nav flex-column"] $ do
                         li_ [class_ "nav-item mb-2"] "© 2023 Paolo Veronelli, Lambdasistemi"
@@ -134,7 +127,7 @@ footerH =
                             a_
                                 [href_ "https://github.com/paolino/giacenza"]
                                 "GitHub"
-            div_ [class_ "col d-flex align-items-center"]
+            div_ [class_ "col d-md-flex align-items-center"]
                 $ div_
                     [class_ "mb-3 mb-md-0 text-body-secondary"]
                     "Powered by Haskell, Servant, Polysemy, Lucid, Streaming, Bootstrap"
