@@ -12,6 +12,7 @@ import Lucid
     , input_
     , label_
     , method_
+    , multiple_
     , name_
     , novalidate_
     , required_
@@ -39,6 +40,7 @@ addFileH prefix = div_ [] $ do
                     , id_ "csv-data"
                     , name_ "filename"
                     , class_ "form-control"
+                    , multiple_ ""
                     ]
             div_ [class_ "mb-3"] $ do
                 input_

@@ -48,6 +48,7 @@ library
   exposed-modules:
       Compute
       Configuration
+      Header
       Logic.Interpreter.Synchronous
       Logic.Invariants
       Logic.Language

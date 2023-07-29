@@ -33,6 +33,7 @@ module Logic.Language
     , storageOperationFailure
     , fileNotConfigured
     , getConfiguration
+    , header
     )
 where
 
@@ -63,6 +64,7 @@ makeSem ''FileStorageE
 
 data AnalyzerE :: Effect where
     Analyze :: StoragePath -> Config -> AnalyzerE m (Either Failure Result)
+    Header :: StoragePath -> AnalyzerE m (Either Failure [Text])
 
 makeSem ''AnalyzerE
 

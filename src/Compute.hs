@@ -94,13 +94,6 @@ parseNamedRecord' (Config nf (encodeUtf8 -> dateField) (encodeUtf8 -> amountFiel
             .: dateField
         <*> parseNR (parseWithEithers $ parseValue $ numberFormatOf nf) m amountField
 
-{- giacenza
-    :: Config
-    -> FilePath
-    -> Year
-    -> IO (Of (Saldo Value, Giacenza Value) Int)
-giacenza cfg dir year = foldResults $ analyzeDir cfg dir year -}
-
 foldResults
     :: (Monad m, Num a, Num b) => Stream (Of (a, b)) m r -> m (Of (a, b) r)
 foldResults = S.fold (\(s, n) (s', n') -> (s + s', n + n')) (0, 0) identity

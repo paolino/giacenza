@@ -20,6 +20,7 @@ import Logic.Language
     , getFile
     , getFilePath
     , getFiles
+    , header
     , putFilePath
     , setConfig
     , setFailure
@@ -82,13 +83,19 @@ deleteFileP name = withCurrentSession do
 -- | List all files with their analysis status in the current session
 listFilesP
     :: forall r
-     . Members '[GetCookieE, AnalyzerE] r
-    => Sem (StateEffs r) [(FileName, Analysis)]
+     . Members '[GetCookieE, AnalyzerE, FileStorageE] r
+    => Sem (StateEffs r) [(FileName, [Text], Analysis)]
 listFilesP = withCurrentSession $ do
     files <- getFiles
-    forM files $ \file -> do
-        analysis <- getFile file
-        pure (file, analysis)
+    forM files $ \name -> do
+        name' <- uniqueFilename name
+        path <- getFilePath name'
+        cols <- header path
+        case cols of
+            Left err -> pure (name, [], Unconfigurable err)
+            Right cols' -> do
+                analysis <- getFile name
+                pure (name, cols', analysis)
 
 -- | Analyze a file and store the result
 analyzeFileP

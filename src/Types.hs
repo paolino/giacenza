@@ -65,6 +65,7 @@ instance Eq CookieGen where
 data Analysis
     = FileAbsent
     | NotDone
+    | Unconfigurable Failure
     | Configured Config
     | Failed Failure Config
     | Success Result Config
@@ -77,15 +78,23 @@ instance ToJSON Analysis where
         Configured _ -> "Configured"
         Failed _ _ -> "Failed"
         Success _ _ -> "Success"
+        Unconfigurable _ -> "Unconfigurable"
 
-newtype Failure = ParsingOfFileFailed CsvParseException
+data Failure
+    = ParsingOfFileFailed CsvParseException
+    | HeaderParseException String
     deriving (Eq, Show)
 
 newtype FileName = FileName Text
     deriving (Eq, Ord, Show, IsString, ToJSON)
 
-type Analyzer = Config -> FilePath -> IO (Either Failure Result)
+data CSVLayer = CSVLayer
+    { analyze :: Analyzer
+    , header :: Header
+    }
 
+type Analyzer = Config -> FilePath -> IO (Either Failure Result)
+type Header = FilePath -> IO (Either Failure [Text])
 newtype Randomness = Randomness Text
 
 newtype DownloadPath = DownloadPath FilePath

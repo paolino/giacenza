@@ -62,7 +62,7 @@ import System.Directory (removeFile)
 import System.FilePath ((</>))
 import Types
     ( Analysis (..)
-    , Analyzer
+    , CSVLayer (..)
     , Cookie (..)
     , CookieGen (..)
     , DownloadPath (..)
@@ -237,9 +237,10 @@ runGetCookieE = reinterpret $ \case
             Just cookie -> do
                 pure cookie
 
-runAnalyzeE :: Member (Embed IO) r => Analyzer -> Sem (AnalyzerE : r) a -> Sem r a
-runAnalyzeE analyzer = interpret $ \case
+runAnalyzeE :: Member (Embed IO) r => CSVLayer -> Sem (AnalyzerE : r) a -> Sem r a
+runAnalyzeE (CSVLayer analyzer header) = interpret $ \case
     Analyze (StoragePath path) cfg -> embed $ analyzer cfg path
+    Header (StoragePath path) -> embed $ header path
 
 type SynchronicStateBase =
     [ FileStorageE
@@ -258,15 +259,15 @@ interpretProductionEffects
     -> CookieGen
     -> ServerState
     -> Maybe Cookie
-    -> Analyzer
+    -> CSVLayer
     -> Sem SynchronicState a
     -> IO ((Maybe Cookie, CookieGen), Either (StateError IOException) (ServerState, a))
-interpretProductionEffects cfg cg serverState mcookie analyzer =
+interpretProductionEffects cfg cg serverState mcookie csvLayer =
     runM
         . runConfigE cfg
         . runState (mcookie, cg)
         . runGetCookieE
-        . runAnalyzeE analyzer
+        . runAnalyzeE csvLayer
         . runError
         . runRecoverR
         . runFileStorageE

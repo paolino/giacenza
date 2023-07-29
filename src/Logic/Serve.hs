@@ -7,6 +7,7 @@ import Compute (analyzer)
 import Control.Concurrent.STM (TVar, readTVarIO, writeTVar)
 import Data.List (lookup)
 import Data.String (String)
+import Header (readCSVHeader)
 import Logic.Interpreter.Synchronous (ServerState, StateConfig, SynchronicState, interpretProductionEffects)
 import Logic.Program (addFileP, analyzeFileP, configureFileP, deleteFileP, listFilesP, resetFileP)
 import Pages.Types (HTML, Page (ListFiles), RawHtml)
@@ -32,12 +33,11 @@ import Servant.API (FromHttpApiData (..))
 import Servant.Multipart
     ( FileData (fdFileName, fdPayload)
     , FromMultipart (..)
-    , MultipartData
+    , MultipartData (..)
     , MultipartForm
     , Tmp
-    , lookupFile
     )
-import Types (Config, Cookie (..), CookieGen, DownloadPath (..), FileName (..))
+import Types (CSVLayer (CSVLayer), Config, Cookie (..), CookieGen, DownloadPath (..), FileName (..))
 import Web.Cookie
     ( Cookies
     , SetCookie (setCookieName, setCookieValue)
@@ -60,14 +60,14 @@ data AddFileS = AddFileS
     , _path :: DownloadPath
     }
 
-instance FromMultipart Tmp AddFileS where
-    fromMultipart :: MultipartData Tmp -> Either String AddFileS
+instance FromMultipart Tmp [AddFileS] where
+    fromMultipart :: MultipartData Tmp -> Either String [AddFileS]
     fromMultipart multipartData =
-        AddFileS
-            <$> do
-                FileName . fdFileName <$> lookupFile "filename" multipartData
-            <*> do
-                DownloadPath . fdPayload <$> lookupFile "filename" multipartData
+        forM (files multipartData)
+            $ \fd -> pure
+                $ AddFileS
+                    do (FileName . fdFileName) fd
+                    do (DownloadPath . fdPayload) fd
 type CookieResponseHtml
     (v :: [Type] -> Type -> Type) =
     v '[HTML] (CookieResponse RawHtml)
@@ -77,7 +77,7 @@ type StateHtml' =
     --  List of files
     "all" :> CookieResponseHtml Get
         -- Add a file
-        :<|> MultipartForm Tmp AddFileS
+        :<|> MultipartForm Tmp [AddFileS]
             :> CookieResponseHtml Post
         -- Configure a file
         :<|> "configure"
@@ -111,7 +111,7 @@ type Responder a =
 serveStateHtml :: (Maybe FileName -> Page -> RawHtml) -> Responder RawHtml -> Server StateHtml
 serveStateHtml mkPage respond' =
     respondListFiles
-        :<|> respondAddFile
+        :<|> respondAddFiles
         :<|> respondConfigureFile
         :<|> respondAnalyzeFile
         :<|> respondReconfigureFile
@@ -119,9 +119,10 @@ serveStateHtml mkPage respond' =
   where
     listFilesPage focus = listFilesP <&> mkPage focus . ListFiles
     respondListFiles mc = respond' mc $ listFilesPage Nothing
-    respondAddFile mc (AddFileS fn dp) = respond' mc $ do
-        addFileP fn dp
-        listFilesPage $ Just fn
+    respondAddFiles mc afs = respond' mc $ do
+        forM_ afs $ \(AddFileS fn dp) -> do
+            addFileP fn dp
+        listFilesPage $ listToMaybe $ _clientFilename <$> afs
     respondConfigureFile mc (Just fn) cfg' = respond' mc $ do
         configureFileP fn cfg'
         analyzeFileP @IOException fn
@@ -166,7 +167,7 @@ mkSynchronicResponder stateVar stateConfig mSetCookie f = do
                 cg
                 oldState
                 mCookie
-                analyzer
+                do CSVLayer analyzer readCSVHeader
                 f
     -- handle the result
     (newState, outputWithCookie) <- case r of

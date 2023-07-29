@@ -15,7 +15,7 @@ import Network.Wai.Handler.Warp
     , setPort
     )
 import Network.Wai.Logger (withStdoutLogger)
-import Network.Wai.Parse (defaultParseRequestBodyOptions, setMaxRequestFileSize)
+import Network.Wai.Parse (defaultParseRequestBodyOptions, setMaxRequestFileSize, setMaxRequestNumFiles)
 import Pages.Page qualified as Page
 import Pages.Types
     ( HTML
@@ -78,9 +78,10 @@ context = multipartOpts :. EmptyContext
     multipartOpts =
         (defaultMultipartOptions (Proxy @Tmp))
             { generalOptions =
-                setMaxRequestFileSize
-                    size10MB
-                    defaultParseRequestBodyOptions
+                setMaxRequestNumFiles 50
+                    $ setMaxRequestFileSize
+                        size10MB
+                        defaultParseRequestBodyOptions
             }
 cookieGen :: StdGen -> CookieGen
 cookieGen = fix \go seed ->

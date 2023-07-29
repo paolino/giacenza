@@ -2,6 +2,7 @@ module Pages.ListFiles where
 
 import Lucid
 
+import Control.Lens ((^..), _1)
 import Data.Foldable as F ()
 import Data.List (elemIndex)
 import Pages.AddFile (addFileH, deleteFileH, reconfigureFileH)
@@ -38,12 +39,12 @@ accordionH focus xs =
                         $ do
                             div_ [class_ "accordion-body d-md-flex w-100"] v
 
-listFilesH :: Maybe FileName -> Text -> [(FileName, Analysis)] -> Html ()
+listFilesH :: Maybe FileName -> Text -> [(FileName, [Text], Analysis)] -> Html ()
 listFilesH focus prefix files = do
-    accordionH (focus >>= \fn -> elemIndex fn (fst <$> files) <&> succ)
+    accordionH (focus >>= \fn -> elemIndex fn (files ^.. traverse . _1) <&> succ)
         $ let
             items = do
-                (FileName fn, analysis) <- files
+                (FileName fn, header, analysis) <- files
                 let k = do
                         case analysis of
                             FileAbsent -> do
@@ -56,6 +57,9 @@ listFilesH focus prefix files = do
                                 span_ [class_ "badge bg-danger ms-2 me-2"] "Failed"
                             Success _ _ -> do
                                 span_ [class_ "badge bg-success ms-2 me-2"] "Success"
+                            Unconfigurable _ -> do
+                                span_ [class_ "badge bg-danger ms-2 me-2"] "Unconfigurable"
+
                         span_ [] $ h4_ $ toHtml fn
                     v = do
                         case analysis of
@@ -64,7 +68,7 @@ listFilesH focus prefix files = do
                                     $ pure ()
                             NotDone -> do
                                 centeredColumn 4
-                                    $ configure prefix fn Nothing Nothing American
+                                    $ configure prefix fn header American
                                 centeredColumn 4
                                     $ buttons
                                     $ deleteFileH prefix fn
@@ -91,6 +95,15 @@ listFilesH focus prefix files = do
                                     $ do
                                         reconfigureFileH prefix fn
                                         deleteFileH prefix fn
+                            Unconfigurable f -> do
+                                centeredColumn 4
+                                    $ toHtml @Text
+                                    $ show f
+                                centeredColumn 4
+                                    $ configure prefix fn header American
+                                centeredColumn 4
+                                    $ buttons
+                                    $ deleteFileH prefix fn
 
                 pure (k, v)
             add =
@@ -166,10 +179,8 @@ numberFormatH nf = do
             [for_ "number-format2", class_ "form-check-label"]
             "European number format"
 
-configure :: Text -> Text -> Maybe Text -> Maybe Text -> NumberFormatKnown -> Html ()
-configure prefix filename mDateField mAmountField nf = do
-    let dateField' = fromMaybe "Date" mDateField
-    let amountField' = fromMaybe "Amount" mAmountField
+configure :: Text -> Text -> [Text] -> NumberFormatKnown -> Html ()
+configure prefix filename header nf = do
     form_
         [ method_ "POST"
         , action_ $ prefix <> "/file/configure?filename=" <> filename
@@ -182,26 +193,13 @@ configure prefix filename mDateField mAmountField nf = do
                     label_
                         [for_ "date-name", class_ "form-label"]
                         "Date field name:"
-                    input_
-                        [ type_ "text"
-                        , id_ "date-name"
-                        , name_ "date-name"
-                        , value_ dateField'
-                        , class_ "form-control"
-                        , required_ ""
-                        ]
+                    selectHeader "date-name" header
                 div_ [class_ "mb-3 col"] $ do
                     label_
                         [for_ "amount-name", class_ "form-label"]
                         "Amount field name:"
-                    input_
-                        [ type_ "text"
-                        , id_ "amount-name"
-                        , name_ "amount-name"
-                        , value_ amountField'
-                        , class_ "form-control"
-                        , required_ ""
-                        ]
+                    selectHeader "amount-name" header
+
             div_ [class_ "mb-3 row"] $ do
                 div_ [class_ "mb-3 col"] $ do
                     numberFormatH nf
@@ -212,3 +210,23 @@ configure prefix filename mDateField mAmountField nf = do
                     , class_ "btn btn-primary"
                     , required_ ""
                     ]
+
+selectHeader :: Text -> [Text] -> Html ()
+selectHeader name header = do
+    label_
+        [for_ name, class_ "form-label"]
+        "Header:"
+    select_
+        [ class_ "form-select"
+        , id_ name
+        , name_ name
+        , required_ ""
+        , term "size" $ show $ length header
+        ]
+        $ do
+            forM_ header $ \h -> do
+                option_
+                    [ value_ h
+                    , term "selected" "selected"
+                    ]
+                    $ toHtml h
