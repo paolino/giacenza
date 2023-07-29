@@ -35,7 +35,7 @@ import Logic.Language
     , StateSem
     , getConfiguration
     , getStoragePath
-    , storageOperationFailure
+    , storageOperationFailure, WebE (..)
     )
 import Polysemy
     ( Embed
@@ -56,8 +56,8 @@ import Polysemy
     , runT
     )
 import Polysemy.Error (Error, runError, throw, try)
-import Polysemy.State (State, evalState, get, put, runState)
-import Protolude hiding (State, evalState, get, put, runState, try)
+import Polysemy.State (State, evalState, get, put, runState, modify, gets)
+import Protolude hiding (State, evalState, get, put, runState, try, modify, gets)
 import System.Directory (removeFile)
 import System.FilePath ((</>))
 import Types
@@ -67,7 +67,7 @@ import Types
     , CookieGen (..)
     , DownloadPath (..)
     , FileName (..)
-    , StoragePath (..)
+    , StoragePath (..), Config
     )
 
 newtype ServerState = ServerState
@@ -248,10 +248,16 @@ type SynchronicStateBase =
     , Error (StateError IOException)
     , AnalyzerE
     , GetCookieE
+    , WebE
     , ConfigE
     , Embed IO
     ]
 type SynchronicState = StateE SynchronicStateBase : SynchronicStateBase
+
+runWebE :: Sem (WebE : r) a -> Sem (State (Map FileName Config) : r) a
+runWebE = reinterpret $ \case
+    StoreOldConfig fn cfg -> modify $ Map.insert fn cfg
+    GetOldConfig fn -> gets $ Map.lookup fn
 
 interpretProductionEffects
     :: forall a
@@ -265,6 +271,8 @@ interpretProductionEffects
 interpretProductionEffects cfg cg serverState mcookie csvLayer =
     runM
         . runConfigE cfg
+        . evalState mempty
+        . runWebE
         . runState (mcookie, cg)
         . runGetCookieE
         . runAnalyzeE csvLayer

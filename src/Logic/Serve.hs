@@ -6,13 +6,16 @@ module Logic.Serve (serveStateHtml, StateHtml, mkSynchronicResponder) where
 import Compute (analyzer)
 import Control.Concurrent.STM (TVar, readTVarIO, writeTVar)
 import Data.List (lookup)
+import Data.Map qualified as Map (fromList, insert, lookup)
 import Data.String (String)
 import Header (readCSVHeader)
 import Logic.Interpreter.Synchronous (ServerState, StateConfig, SynchronicState, interpretProductionEffects)
-import Logic.Program (addFileP, analyzeFileP, configureFileP, deleteFileP, listFilesP, resetFileP)
+import Logic.Language (WebE (..))
+import Logic.Program (addFileP, analyzeFileP, configureFileP, deleteFileP, getConfigurations, listFilesP, resetFileP)
 import Pages.Types (HTML, Page (ListFiles), RawHtml)
-import Polysemy (Sem)
-import Protolude hiding (Handler)
+import Polysemy (Sem, reinterpret)
+import Polysemy.State (State, gets, modify)
+import Protolude hiding (Handler, State, get, gets, modify, put)
 import Servant
     ( FormUrlEncoded
     , Get
@@ -108,7 +111,12 @@ type Responder a =
     -- ^ computation over the state
     -> Handler (CookieResponse a)
 
-serveStateHtml :: (Maybe FileName -> Page -> RawHtml) -> Responder RawHtml -> Server StateHtml
+
+
+serveStateHtml
+    :: (Maybe FileName -> Map FileName Config -> Page -> RawHtml)
+    -> Responder RawHtml
+    -> Server StateHtml
 serveStateHtml mkPage respond' =
     respondListFiles
         :<|> respondAddFiles
@@ -117,8 +125,11 @@ serveStateHtml mkPage respond' =
         :<|> respondReconfigureFile
         :<|> respondDeleteFile
   where
-    listFilesPage focus = listFilesP <&> mkPage focus . ListFiles
-    respondListFiles mc = respond' mc $ listFilesPage Nothing
+    listFilesPage focus = do
+        cfgs <- Map.fromList <$> getConfigurations @IOException
+        traceShow cfgs $ listFilesP <&> mkPage focus cfgs . ListFiles
+    respondListFiles mc = respond' mc $ do
+        listFilesPage Nothing
     respondAddFiles mc afs = respond' mc $ do
         forM_ afs $ \(AddFileS fn dp) -> do
             addFileP fn dp

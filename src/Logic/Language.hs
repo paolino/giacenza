@@ -12,6 +12,7 @@ module Logic.Language
     , GetCookieE (..)
     , AnalyzerE (..)
     , ConfigE (..)
+    , WebE (..)
     , deleteSession
     , withSession
     , getFiles
@@ -34,6 +35,8 @@ module Logic.Language
     , fileNotConfigured
     , getConfiguration
     , header
+    , storeOldConfig
+    , getOldConfig
     )
 where
 
@@ -118,3 +121,11 @@ getConfiguration fileName = do
         Success _ config -> pure config
         Failed _ config -> pure config
         _ -> fileNotConfigured @e fileName
+
+--- Web effect ----------------------------------------------------------------
+
+data WebE :: Effect where
+    StoreOldConfig :: FileName -> Config -> WebE m ()
+    GetOldConfig :: FileName -> WebE m (Maybe Config)
+
+makeSem ''WebE

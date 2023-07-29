@@ -22,6 +22,7 @@ import Logic.Language
     , getFiles
     , header
     , putFilePath
+    , recover
     , setConfig
     , setFailure
     , setResult
@@ -173,3 +174,15 @@ resetFileP
     -> Sem (StateEffs effs) ()
 resetFileP name = withCurrentSession do
     addFile name
+
+getConfigurations
+    :: forall e effs
+     . (Member GetCookieE effs, Member (RecoverR e) effs, Show e)
+    => Sem (StateEffs effs) [(FileName, Config)]
+getConfigurations = withCurrentSession do
+    files <- getFiles
+    rs <- forM files $ \fileName -> do
+        config <- recover @e $ getConfiguration @e fileName
+        pure $ (fileName,) <$> config
+
+    traceShow rs $ pure $ rights rs
