@@ -17,6 +17,7 @@ module Logic.Interpreter.Synchronous
     , StateConfig (..)
     , SynchronicState
     , SynchronicStateBase
+    , WebState
     )
 where
 
@@ -33,9 +34,10 @@ import Logic.Language
     , StateE (..)
     , StateError (..)
     , StateSem
+    , WebE (..)
     , getConfiguration
     , getStoragePath
-    , storageOperationFailure, WebE (..)
+    , storageOperationFailure
     )
 import Polysemy
     ( Embed
@@ -56,18 +58,19 @@ import Polysemy
     , runT
     )
 import Polysemy.Error (Error, runError, throw, try)
-import Polysemy.State (State, evalState, get, put, runState, modify, gets)
-import Protolude hiding (State, evalState, get, put, runState, try, modify, gets)
+import Polysemy.State (State, evalState, get, gets, modify, put, runState)
+import Protolude hiding (State, evalState, get, gets, modify, put, runState, try)
 import System.Directory (removeFile)
 import System.FilePath ((</>))
 import Types
     ( Analysis (..)
     , CSVLayer (..)
+    , Config
     , Cookie (..)
     , CookieGen (..)
     , DownloadPath (..)
     , FileName (..)
-    , StoragePath (..), Config
+    , StoragePath (..)
     )
 
 newtype ServerState = ServerState
@@ -254,24 +257,33 @@ type SynchronicStateBase =
     ]
 type SynchronicState = StateE SynchronicStateBase : SynchronicStateBase
 
+type WebState = Map FileName Config
+
 runWebE :: Sem (WebE : r) a -> Sem (State (Map FileName Config) : r) a
 runWebE = reinterpret $ \case
     StoreOldConfig fn cfg -> modify $ Map.insert fn cfg
     GetOldConfig fn -> gets $ Map.lookup fn
+    DeleteOldConfig fn -> modify @(Map FileName Config) $ Map.delete fn
 
 interpretProductionEffects
     :: forall a
      . StateConfig
     -> CookieGen
     -> ServerState
+    -> WebState
     -> Maybe Cookie
     -> CSVLayer
     -> Sem SynchronicState a
-    -> IO ((Maybe Cookie, CookieGen), Either (StateError IOException) (ServerState, a))
-interpretProductionEffects cfg cg serverState mcookie csvLayer =
+    -> IO
+        ( WebState
+        , ( (Maybe Cookie, CookieGen)
+          , Either (StateError IOException) (ServerState, a)
+          )
+        )
+interpretProductionEffects cfg cg serverState webState mcookie csvLayer =
     runM
         . runConfigE cfg
-        . evalState mempty
+        . runState webState
         . runWebE
         . runState (mcookie, cg)
         . runGetCookieE

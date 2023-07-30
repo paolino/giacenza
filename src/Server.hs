@@ -5,7 +5,7 @@ module Server (runServer) where
 import Control.Concurrent.STM (TVar, newTVarIO)
 import Data.String (IsString (..), String)
 import Data.Text (pack)
-import Logic.Interpreter.Synchronous (ServerState, StateConfig (..), emptyServerState)
+import Logic.Interpreter.Synchronous (ServerState, StateConfig (..), WebState, emptyServerState)
 import Logic.Serve (StateHtml, mkSynchronicResponder, serveStateHtml)
 import Network.Wai.Handler.Warp
     ( defaultSettings
@@ -43,33 +43,31 @@ import Servant.Server
 import Streaming.Servant ()
 import System.Random (StdGen, getStdGen, randomRs, split)
 import Types
-    ( Config (..)
-    , Cookie (..)
+    ( Cookie (..)
     , CookieGen (..)
     , FileName (..)
-    , NumberFormatKnown (..)
+    , Result (..)
     , StoragePath (..)
     )
-import Web.Internal.FormUrlEncoded (FromForm (..), parseUnique)
 
 type API =
     Get '[HTML] RawHtml
         :<|> StateHtml
 
-type StateVar = TVar (CookieGen, ServerState)
+type StateVar = TVar (CookieGen, ServerState, WebState)
 
 app :: StateVar -> Text -> Application
 app stateVar prefix =
     serveWithContext (Proxy @API) context $ about :<|> stateFulStuff
   where
-    about = pure $ page' Nothing mempty About
+    about = pure $ page' Nothing mempty (Result mempty) About
     stateFulStuff = serveStateHtml
         do page'
         do
             mkSynchronicResponder
                 do stateVar
                 do StateConfig $ StoragePath "."
-    page' focus mcfg = Page.page focus mcfg prefix
+    page' focus mcfg sums = Page.page focus mcfg sums prefix
 
 context :: Context '[MultipartOptions Tmp]
 context = multipartOpts :. EmptyContext
@@ -99,7 +97,7 @@ runServer
     -> IO ()
 runServer prefix port host = do
     cookieG <- getStdGen <&> cookieGen
-    stateVar <- newTVarIO (cookieG, emptyServerState)
+    stateVar <- newTVarIO (cookieG, emptyServerState, mempty)
     withStdoutLogger $ \aplogger -> do
         let settings =
                 setPort port
@@ -107,17 +105,5 @@ runServer prefix port host = do
                     $ setLogger aplogger defaultSettings
         runSettings settings $ app stateVar prefix
 
-instance FromHttpApiData NumberFormatKnown where
-    parseUrlPiece "european" = Right European
-    parseUrlPiece "american" = Right American
-    parseUrlPiece _ = Left "Invalid number format"
-
 instance FromHttpApiData FileName where
     parseUrlPiece = Right . FileName
-
-instance FromForm Config where
-    fromForm f = do
-        nf <- parseUnique "number-format" f
-        dateField <- parseUnique "date-name" f
-        amountField <- parseUnique "amount-name" f
-        pure $ Config nf dateField amountField

@@ -9,7 +9,7 @@ import Data.Map qualified as Map (lookup)
 import Pages.AddFile (addFileH, deleteFileH, reconfigureFileH)
 import Pages.Result (resultH)
 import Protolude hiding (for_)
-import Types (Analysis (..), Config (..), FileName (..), NumberFormatKnown (..))
+import Types (Analysis (..), Config (..), FileName (..), NumberFormatKnown (..), Result)
 
 accordionH :: Maybe Int -> [(Html (), Html ())] -> Html ()
 accordionH focus xs =
@@ -17,7 +17,7 @@ accordionH focus xs =
         forM_ (zip [0 :: Int ..] xs) $ \(item, (k, v)) -> do
             div_ [class_ "accordion-item"] $ do
                 div_ [class_ "accordion-header", id_ ("elem" <> show item)] $ do
-                    h4_ [class_ "mb-0"] $ do
+                    h5_ [class_ "mb-0"] $ do
                         button_
                             [ class_
                                 $ "accordion-button"
@@ -45,9 +45,10 @@ listFilesH
     -> Map FileName Config
     -> Text
     -> [(FileName, [Text], Analysis)]
+    -> Result
     -> Html ()
-listFilesH focus cfg prefix files = do
-    accordionH (focus >>= \fn -> elemIndex fn (files ^.. traverse . _1) <&> succ)
+listFilesH focus cfg prefix files sums = do
+    accordionH (focus >>= \fn -> elemIndex fn (files ^.. traverse . _1))
         $ let
             items = do
                 (filename@(FileName fn), header, analysis) <- files
@@ -66,7 +67,7 @@ listFilesH focus cfg prefix files = do
                             Unconfigurable _ -> do
                                 span_ [class_ "badge bg-danger ms-2 me-2"] "Unconfigurable"
 
-                        span_ [] $ h4_ $ toHtml fn
+                        span_ [] $ h5_ $ toHtml fn
                     v = do
                         case analysis of
                             FileAbsent -> do
@@ -111,18 +112,27 @@ listFilesH focus cfg prefix files = do
                                     $ deleteFileH prefix fn
 
                 pure (k, v)
+            final =
+                ( h5_ [class_ "text-center"] $ toHtml @Text "Final report"
+                , resultH sums
+                )
+
             add =
-                ( h4_ [class_ "text-center"] $ toHtml @Text "add/replace file"
+                ( h5_ [class_ "text-center"] $ toHtml @Text "Add files"
                 , addFileH prefix
                 )
+            global =
+                ( h5_ [class_ "text-center"] $ toHtml @Text "Global changes"
+                , buttons $ reconfigureAll prefix >> deleteAll prefix
+                )
           in
-            add : items
+            items <> [final, add, global]
 
 buttons :: Html () -> Html ()
 buttons =
     div_
         [ class_
-            "justify-content-end d-flex align-items-end"
+            "d-grid gap-2 d-md-flex justify-content-md-end"
         ]
 
 renderConfiguration :: Config -> Html ()
@@ -155,6 +165,32 @@ reAnalyze fn prefix =
             [ type_ "submit"
             , value_ "(Re)Analyze"
             , class_ "btn btn-primary"
+            ]
+
+deleteAll :: Text -> Html ()
+deleteAll prefix =
+    div_ []
+        $ form_
+            [ method_ "POST"
+            , action_ $ prefix <> "/file/delete-all"
+            ]
+        $ input_
+            [ type_ "submit"
+            , value_ "Delete all files"
+            , class_ "btn btn-danger"
+            ]
+
+reconfigureAll :: Text -> Html ()
+reconfigureAll prefix =
+    div_ []
+        $ form_
+            [ method_ "POST"
+            , action_ $ prefix <> "/file/reconfigure-all"
+            ]
+        $ input_
+            [ type_ "submit"
+            , value_ "Reconfigure all files"
+            , class_ "btn btn-warning"
             ]
 
 numberFormatH :: Maybe Config -> Html ()
@@ -201,17 +237,28 @@ configure prefix filename header cfg = do
                 div_ [class_ "mb-3 col"] $ do
                     label_
                         [for_ "date-name", class_ "form-label"]
-                        "Date field name:"
+                        "Date field"
                     selectHeader Date header cfg
                 div_ [class_ "mb-3 col"] $ do
                     label_
                         [for_ "amount-name", class_ "form-label"]
-                        "Amount field name:"
+                        "Amount field"
                     selectHeader Amount header cfg
 
             div_ [class_ "mb-3 row"] $ do
                 div_ [class_ "mb-3 col"] $ do
                     numberFormatH cfg
+            div_ [class_ "mb-3 row"] $ do
+                label_
+                    [for_ "checkbox", class_ "form-check-label"]
+                    "Propagate configuration"
+                input_
+                    [ type_ "checkbox"
+                    , name_ "propagate"
+                    , checked_
+                    , class_ "form-check-input"
+                    , required_ ""
+                    ]
             div_ [class_ "mb-3"] $ do
                 input_
                     [ type_ "submit"
@@ -230,9 +277,6 @@ selectHeader field header cfg = do
         oldName = case field of
             Date -> dateField
             Amount -> amountField
-    label_
-        [for_ name, class_ "form-label"]
-        "Header:"
     select_
         [ class_ "form-select"
         , id_ name

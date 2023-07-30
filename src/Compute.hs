@@ -223,3 +223,9 @@ collectResult = fmap f . S.toList . S.toList_
                 (Map.zipWithMatched $ \_k x y -> (x, y))
                 (Map.fromList s)
                 (Map.fromList g)
+
+sumResults :: [Result] -> Result
+sumResults = foldl' f (Result mempty)
+  where
+    f (Result m) (Result m') = Result $ Map.unionWith g m m'
+    g (x, y) (x', y') = (x + x', y + y')

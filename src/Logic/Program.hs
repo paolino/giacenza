@@ -3,6 +3,7 @@
 
 module Logic.Program where
 
+import Compute (sumResults)
 import Logic.Language
     ( AnalyzerE
     , FileStorageE
@@ -10,22 +11,25 @@ import Logic.Language
     , RecoverR
     , SessionE
     , StateE
+    , WebE
     , addFile
     , analyze
     , deleteFile
     , deleteFilePath
+    , deleteOldConfig
     , deleteSession
     , getConfiguration
     , getCookie
     , getFile
     , getFilePath
     , getFiles
+    , getOldConfig
     , header
     , putFilePath
-    , recover
     , setConfig
     , setFailure
     , setResult
+    , storeOldConfig
     , withSession
     )
 import Polysemy (Member, Members, Sem)
@@ -36,6 +40,7 @@ import Types
     , Cookie (..)
     , DownloadPath
     , FileName (..)
+    , Result
     , StoragePath (..)
     , UploadPath (..)
     )
@@ -76,7 +81,16 @@ deleteFileP
     :: (Member GetCookieE r, Member FileStorageE r)
     => FileName
     -> Sem (StateEffs r) ()
-deleteFileP name = withCurrentSession do
+deleteFileP = withCurrentSession . deleteFileP'
+
+deleteFileP'
+    :: ( Member GetCookieE r
+       , Member FileStorageE r
+       , Member SessionE r
+       )
+    => FileName
+    -> Sem r ()
+deleteFileP' name = do
     name' <- uniqueFilename name
     deleteFilePath name'
     deleteFile name
@@ -116,12 +130,10 @@ analyzeFileP name = withCurrentSession do
 -- | Delete a file from the current session
 deleteSessionP
     :: forall effs
-     . Members '[GetCookieE] effs
+     . (Members '[GetCookieE] effs, Member WebE effs, Member FileStorageE effs)
     => Sem (StateEffs effs) ()
 deleteSessionP = do
-    withCurrentSession do
-        names <- getFiles
-        forM_ names deleteFile
+    deleteAllFilesP
     getCookie >>= deleteSession @effs
 
 -- | Retrieve session for downloading
@@ -175,14 +187,74 @@ resetFileP
 resetFileP name = withCurrentSession do
     addFile name
 
-getConfigurations
-    :: forall e effs
-     . (Member GetCookieE effs, Member (RecoverR e) effs, Show e)
+getOldConfigurations
+    :: forall effs
+     . ( Member GetCookieE effs
+       , Member WebE effs
+       )
     => Sem (StateEffs effs) [(FileName, Config)]
-getConfigurations = withCurrentSession do
+getOldConfigurations = withCurrentSession do
     files <- getFiles
     rs <- forM files $ \fileName -> do
-        config <- recover @e $ getConfiguration @e fileName
+        config <- getOldConfig fileName
         pure $ (fileName,) <$> config
+    pure $ catMaybes rs
 
-    traceShow rs $ pure $ rights rs
+propagateConfigP
+    :: ( Member (RecoverR IOException) effs
+       , Member GetCookieE effs
+       , Member WebE effs
+       )
+    => FileName
+    -> Sem (StateEffs effs) ()
+propagateConfigP fn = withCurrentSession do
+    cfg <- getConfiguration @IOException fn
+    files <- getFiles
+    forM_ files $ \fn' -> do
+        fileState <- getFile fn'
+        store <- case fileState of
+            NotDone -> pure True
+            Failed _ _ -> addFile fn' $> True
+            _ -> pure False
+        when store $ storeOldConfig fn' cfg
+
+notDonesOrFaileds
+    :: Member GetCookieE effs
+    => Sem (StateEffs effs) [FileName]
+notDonesOrFaileds = withCurrentSession do
+    files <- getFiles
+    fmap concat $ forM files $ \fn' -> do
+        fileState <- getFile fn'
+        case fileState of
+            NotDone -> pure [fn']
+            Failed _ _ -> pure [fn']
+            _ -> pure []
+
+deleteAllFilesP
+    :: forall effs
+     . (Members '[GetCookieE, FileStorageE] effs, Member WebE effs)
+    => Sem (StateEffs effs) ()
+deleteAllFilesP = withCurrentSession do
+    names <- getFiles
+    forM_ names $ \fn -> do
+        deleteFileP' fn
+        deleteOldConfig fn
+
+reconfigureAllFilesP
+    :: Member GetCookieE effs
+    => Sem (StateEffs effs) ()
+reconfigureAllFilesP = withCurrentSession do
+    files <- getFiles
+    forM_ files addFile
+
+sumsP
+    :: Member GetCookieE effs
+    => Sem (StateEffs effs) Result
+sumsP = withCurrentSession do
+    files <- getFiles
+    rs <- forM files $ \fn -> do
+        fileState <- getFile fn
+        pure $ case fileState of
+            Success result _ -> Just result
+            _ -> Nothing
+    pure $ sumResults $ catMaybes rs

@@ -37,6 +37,7 @@ module Logic.Language
     , header
     , storeOldConfig
     , getOldConfig
+    , deleteOldConfig
     )
 where
 
@@ -127,5 +128,6 @@ getConfiguration fileName = do
 data WebE :: Effect where
     StoreOldConfig :: FileName -> Config -> WebE m ()
     GetOldConfig :: FileName -> WebE m (Maybe Config)
+    DeleteOldConfig :: FileName -> WebE m ()
 
 makeSem ''WebE

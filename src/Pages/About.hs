@@ -2,7 +2,7 @@ module Pages.About where
 
 import Lucid
     ( Html
-    , h4_
+    , h5_
     , li_
     , p_
     , ul_
@@ -11,7 +11,7 @@ import Protolude hiding (for_)
 
 aboutH :: Html ()
 aboutH = do
-    h4_
+    h5_
         "About"
     p_
         "This is a simple web application to compute the average deposit and the end of the year balance \

@@ -6,15 +6,14 @@ module Logic.Serve (serveStateHtml, StateHtml, mkSynchronicResponder) where
 import Compute (analyzer)
 import Control.Concurrent.STM (TVar, readTVarIO, writeTVar)
 import Data.List (lookup)
-import Data.Map qualified as Map (fromList, insert, lookup)
+import Data.Map qualified as Map (fromList)
 import Data.String (String)
 import Header (readCSVHeader)
-import Logic.Interpreter.Synchronous (ServerState, StateConfig, SynchronicState, interpretProductionEffects)
-import Logic.Language (WebE (..))
-import Logic.Program (addFileP, analyzeFileP, configureFileP, deleteFileP, getConfigurations, listFilesP, resetFileP)
+import Logic.Interpreter.Synchronous (ServerState, StateConfig, SynchronicState, WebState, interpretProductionEffects)
+import Logic.Language (getConfiguration, storeOldConfig)
+import Logic.Program (addFileP, analyzeFileP, configureFileP, deleteAllFilesP, deleteFileP, getOldConfigurations, listFilesP, notDonesOrFaileds, reconfigureAllFilesP, resetFileP, sumsP, withCurrentSession)
 import Pages.Types (HTML, Page (ListFiles), RawHtml)
-import Polysemy (Sem, reinterpret)
-import Polysemy.State (State, gets, modify)
+import Polysemy (Sem)
 import Protolude hiding (Handler, State, get, gets, modify, put)
 import Servant
     ( FormUrlEncoded
@@ -40,13 +39,23 @@ import Servant.Multipart
     , MultipartForm
     , Tmp
     )
-import Types (CSVLayer (CSVLayer), Config, Cookie (..), CookieGen, DownloadPath (..), FileName (..))
+import Types
+    ( CSVLayer (CSVLayer)
+    , Config (..)
+    , Cookie (..)
+    , CookieGen
+    , DownloadPath (..)
+    , FileName (..)
+    , NumberFormatKnown (..)
+    , Result
+    )
 import Web.Cookie
     ( Cookies
     , SetCookie (setCookieName, setCookieValue)
     , defaultSetCookie
     , parseCookies
     )
+import Web.FormUrlEncoded (FromForm (..), parseUnique)
 
 type CookieResponse a = Headers '[Header "Set-Cookie" SetCookie] a
 
@@ -75,6 +84,32 @@ type CookieResponseHtml
     (v :: [Type] -> Type -> Type) =
     v '[HTML] (CookieResponse RawHtml)
 
+data ConfigAndPropagate = ConfigAndPropagate
+    { _config :: Config
+    , _propagate :: Bool
+    }
+    deriving (Eq, Show)
+
+instance FromHttpApiData NumberFormatKnown where
+    parseUrlPiece "european" = Right European
+    parseUrlPiece "american" = Right American
+    parseUrlPiece _ = Left "Invalid number format"
+
+instance FromForm ConfigAndPropagate where
+    fromForm form = do
+        ConfigAndPropagate
+            <$> do
+                nf <- parseUnique "number-format" form
+                dateField <- parseUnique "date-name" form
+                amountField <- parseUnique "amount-name" form
+                pure $ Config nf dateField amountField
+            <*> do
+                r <- parseUnique @Text "propagate" form
+                case r of
+                    "on" -> pure True
+                    "off" -> pure False
+                    _ -> Left "Invalid propagate value"
+
 type StateHtml' =
     -- Form to upload a file
     --  List of files
@@ -85,7 +120,7 @@ type StateHtml' =
         -- Configure a file
         :<|> "configure"
             :> QueryParam "filename" FileName
-            :> ReqBody '[FormUrlEncoded] Config
+            :> ReqBody '[FormUrlEncoded] ConfigAndPropagate
             :> CookieResponseHtml Post
         -- Analyze a file
         :<|> "analyze"
@@ -96,6 +131,10 @@ type StateHtml' =
             :> CookieResponseHtml Post
         :<|> "delete"
             :> QueryParam "filename" FileName
+            :> CookieResponseHtml Post
+        :<|> "delete-all"
+            :> CookieResponseHtml Post
+        :<|> "reconfigure-all"
             :> CookieResponseHtml Post
 
 type family Prepend f xs where
@@ -111,10 +150,8 @@ type Responder a =
     -- ^ computation over the state
     -> Handler (CookieResponse a)
 
-
-
 serveStateHtml
-    :: (Maybe FileName -> Map FileName Config -> Page -> RawHtml)
+    :: (Maybe FileName -> Map FileName Config -> Result -> Page -> RawHtml)
     -> Responder RawHtml
     -> Server StateHtml
 serveStateHtml mkPage respond' =
@@ -124,20 +161,30 @@ serveStateHtml mkPage respond' =
         :<|> respondAnalyzeFile
         :<|> respondReconfigureFile
         :<|> respondDeleteFile
+        :<|> respondDeleteAllFiles
+        :<|> respondReconfigureAllFiles
   where
     listFilesPage focus = do
-        cfgs <- Map.fromList <$> getConfigurations @IOException
-        traceShow cfgs $ listFilesP <&> mkPage focus cfgs . ListFiles
+        cfgs <- Map.fromList <$> getOldConfigurations
+        sums <- sumsP
+        listFilesP <&> mkPage focus cfgs sums . ListFiles
     respondListFiles mc = respond' mc $ do
         listFilesPage Nothing
     respondAddFiles mc afs = respond' mc $ do
         forM_ afs $ \(AddFileS fn dp) -> do
             addFileP fn dp
         listFilesPage $ listToMaybe $ _clientFilename <$> afs
-    respondConfigureFile mc (Just fn) cfg' = respond' mc $ do
-        configureFileP fn cfg'
-        analyzeFileP @IOException fn
-        listFilesPage $ Just fn
+    respondConfigureFile
+        mc
+        (Just fn)
+        (ConfigAndPropagate cfg' propagate) = respond' mc $ do
+            targets <- if propagate then notDonesOrFaileds else pure [fn]
+            forM_ targets $ \fn' -> do
+                configureFileP fn' cfg'
+                analyzeFileP @IOException fn'
+                cfg <- withCurrentSession $ getConfiguration @IOException fn'
+                storeOldConfig fn' cfg
+            listFilesPage $ Just fn
     respondConfigureFile mc Nothing _ = respond' mc do
         listFilesPage Nothing
     respondAnalyzeFile mc (Just fn) = respond' mc $ do
@@ -155,28 +202,34 @@ serveStateHtml mkPage respond' =
         listFilesPage Nothing
     respondDeleteFile mc Nothing = respond' mc do
         listFilesPage Nothing
-
+    respondDeleteAllFiles mc = respond' mc $ do
+        deleteAllFilesP
+        listFilesPage Nothing
+    respondReconfigureAllFiles mc = respond' mc $ do
+        reconfigureAllFilesP
+        listFilesPage Nothing
 mkSynchronicResponder
-    :: TVar (CookieGen, ServerState)
+    :: TVar (CookieGen, ServerState, WebState)
     -- ^ State variable
     -> StateConfig
     -- ^ configuration
     -> Responder a
 mkSynchronicResponder stateVar stateConfig mSetCookie f = do
     -- read the state
-    (cg, oldState) <- liftIO $ readTVarIO stateVar
+    (cg, oldState, oldWebState) <- liftIO $ readTVarIO stateVar
     -- extract the session cookie
     let mCookie = do
             Cookies' setCookie <- mSetCookie
             cookie <- lookup "session" setCookie
             pure $ Cookie $ decodeUtf8 cookie
     -- run the computation
-    ((newcookie, cg'), r) <-
+    (webState', ((newcookie, cg'), r)) <-
         liftIO
             $ interpretProductionEffects
                 stateConfig
                 cg
                 oldState
+                oldWebState
                 mCookie
                 do CSVLayer analyzer readCSVHeader
                 f
@@ -190,7 +243,7 @@ mkSynchronicResponder stateVar stateConfig mSetCookie f = do
                 Nothing ->
                     panic "respondP: no cookie generated"
     -- write the new state
-    liftIO $ atomically $ writeTVar stateVar (cg', newState)
+    liftIO $ atomically $ writeTVar stateVar (cg', newState, webState')
     pure outputWithCookie
   where
     mkCookies :: Cookie -> SetCookie

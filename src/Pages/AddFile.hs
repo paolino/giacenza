@@ -80,6 +80,6 @@ reconfigureFileH prefix filename = div_ [] $ do
             input_
                 [ type_ "submit"
                 , value_ "Reconfigure"
-                , class_ "btn btn-secondary"
+                , class_ "btn btn-warning"
                 , required_ ""
                 ]

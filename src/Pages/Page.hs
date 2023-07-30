@@ -13,7 +13,7 @@ import Lucid
     , content_
     , crossorigin_
     , div_
-    , h4_
+    , h5_
     , head_
     , header_
     , href_
@@ -41,7 +41,7 @@ import Pages.Types
     , _ListFiles
     )
 import Protolude hiding (for_)
-import Types (Config, FileName)
+import Types (Config, FileName, Result)
 
 pageH :: Text -> Page -> Html () -> Html ()
 pageH prefix p body = html_ [term "data-bs-theme" "dark"]
@@ -94,7 +94,7 @@ headH p prefix = do
                         (is _ListFiles p)
                         [href_ $ prefix <> "/file/all"]
                     )
-                    "Your space"
+                    "Statements"
             li_ [class_ "nav-item"] $ do
                 a_
                     ( activePageH
@@ -103,11 +103,17 @@ headH p prefix = do
                     )
                     "About"
 
-page :: Maybe FileName -> Map FileName Config -> Text -> Page -> RawHtml
-page focus mcfg prefix p = RawHtml $ renderBS $ case p of
+page
+    :: Maybe FileName
+    -> Map FileName Config
+    -> Result
+    -> Text
+    -> Page
+    -> RawHtml
+page focus mcfg sums prefix p = RawHtml $ renderBS $ case p of
     About -> pageH prefix p aboutH
     ListFiles as -> pageH prefix p $ do
-        listFilesH focus mcfg prefix as
+        listFilesH focus mcfg prefix as sums
     AddFile -> pageH prefix p $ addFileH prefix
 
 footerH :: Html ()
@@ -136,5 +142,5 @@ reportExcH :: Text -> Html ()
 reportExcH msg = do
     -- class="alert alert-primary" role="alert"
     div_ [class_ "alert alert-danger", term "role_" "alert"] $ do
-        h4_ "Error in the request"
+        h5_ "Error in the request"
         p_ $ toHtml msg
