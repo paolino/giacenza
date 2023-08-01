@@ -66,8 +66,13 @@ pageH prefix p body = html_ [term "data-bs-theme" "dark"]
                 , crossorigin_ "anonymous"
                 ]
                 $ pure ()
-
-            pure ()
+            term
+                "script"
+                [src_ "https://unpkg.com/htmx.org@1.9.4"
+                , integrity_ "sha384-zUfuhFKKZCbHTY6aRR46gxiqszMk5tcHjsVFxnUo8VMus4kHGVdIYVbOYYNlKmHV"
+                , crossorigin_ "anonymous"
+                ]
+                $ pure ()
         body_ $ do
             headH p prefix
             div_ [class_ "container-fluid"] $ do
@@ -102,6 +107,9 @@ headH p prefix = do
                         [href_ $ prefix <> "/"]
                     )
                     "About"
+            li_ [class_ "nav-item me-end"] $ do
+                div_ [term "hx-get" $ prefix <> "/time", term "hx-trigger" "load every 60s"] $ do
+                    pure ()
 
 page
     :: Maybe FileName

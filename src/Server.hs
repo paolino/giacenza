@@ -20,14 +20,14 @@ import Pages.Page qualified as Page
 import Pages.Types
     ( HTML
     , Page (..)
-    , RawHtml
+    , RawHtml (..)
     )
 import Protolude hiding (Handler)
 import Servant
     ( Context (..)
     , FromHttpApiData (..)
     , serveWithContext
-    , (:<|>) (..)
+    , (:<|>) (..), (:>)
     )
 import Servant.API
     ( Get
@@ -49,16 +49,21 @@ import Types
     , Result (..)
     , StoragePath (..)
     )
+import Lucid (ToHtml(toHtml), renderBS, div_)
+import Data.Time.Clock (getCurrentTime, UTCTime)
+import Data.Time.Format (formatTime)
+import Data.Time (defaultTimeLocale)
 
 type API =
     Get '[HTML] RawHtml
         :<|> StateHtml
+        :<|> "time" :> Get '[HTML] RawHtml
 
 type StateVar = TVar (CookieGen, ServerState, WebState)
 
 app :: StateVar -> Text -> Application
 app stateVar prefix =
-    serveWithContext (Proxy @API) context $ about :<|> stateFulStuff
+    serveWithContext (Proxy @API) context $ about :<|> stateFulStuff :<|> time
   where
     about = pure $ page' Nothing mempty (Result mempty) About
     stateFulStuff = serveStateHtml
@@ -68,6 +73,13 @@ app stateVar prefix =
                 do stateVar
                 do StateConfig $ StoragePath "."
     page' focus mcfg sums = Page.page focus mcfg sums prefix
+    time = do
+        t <- liftIO getCurrentTime
+        pure $ RawHtml $ renderBS $ do
+            div_ [] $ toHtml $ renderTime t
+
+renderTime :: UTCTime -> Text
+renderTime = toS . formatTime defaultTimeLocale "%Y-%m-%d %H:%M"
 
 context :: Context '[MultipartOptions Tmp]
 context = multipartOpts :. EmptyContext

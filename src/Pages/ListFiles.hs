@@ -47,7 +47,7 @@ listFilesH
     -> [(FileName, [Text], Analysis)]
     -> Result
     -> Html ()
-listFilesH focus cfg prefix files sums = do
+listFilesH focus cfg prefix files sums = div_ [id_ "#listFiles"] do
     accordionH (focus >>= \fn -> elemIndex fn (files ^.. traverse . _1))
         $ let
             items = do
