@@ -66,14 +66,14 @@ type API =
 
 type StateVar = TVar (CookieGen, ServerState, WebState)
 
-app :: StateVar -> All3S -> Text -> Application
-app stateVar all3s prefix =
+app :: TVar Int -> StateVar -> All3S -> Text -> Application
+app counterVar stateVar all3s prefix =
     serveWithContext (Proxy @API) context
         $ about
             :<|> stateFulStuff
             :<|> time
             :<|> all3 prefix all3s
-            :<|> sseS prefix
+            :<|> sseS counterVar prefix
   where
     about = pure $ page' Nothing mempty (Result mempty) About
     stateFulStuff = serveStateHtml
@@ -121,13 +121,14 @@ runServer
 runServer prefix port host = do
     cookieG <- getStdGen <&> cookieGen
     stateVar <- newTVarIO (cookieG, emptyServerState, mempty)
+    counterVar <- newTVarIO 0
     all3s <- newTVarIO mempty
     withStdoutLogger $ \aplogger -> do
         let settings =
                 setPort port
                     $ setHost (fromString host)
                     $ setLogger aplogger defaultSettings
-        runSettings settings $ app stateVar all3s prefix
+        runSettings settings $ app counterVar stateVar all3s prefix
 
 instance FromHttpApiData FileName where
     parseUrlPiece = Right . FileName
