@@ -71,16 +71,16 @@ sse x =
 sseSwap :: Text -> Attribute
 sseSwap = term "sse-swap"
 
-sseS :: Server SSE
-sseS =
+sseS :: Text -> Server SSE
+sseS prefix =
     do
         chan <- liftIO newTChanIO
         liftIO $ async >=> link $ counter chan
-        liftIO $ link<=< async $ clock chan
+        liftIO $ link <=< async $ clock chan
         pure $ sourceFromTChan chan
         :<|> do
             pure $ RawHtml $ renderBS $ pageH $ do
-                sse "/changes" $ do
+                sse (prefix <> "/changes") $ replicateM_ 25 do
                     div_ [sseSwap "counter"] $ pure ()
                     div_ [sseSwap "clock"] $ pure ()
 

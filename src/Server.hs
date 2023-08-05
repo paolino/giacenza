@@ -73,7 +73,7 @@ app stateVar all3s prefix =
             :<|> stateFulStuff
             :<|> time
             :<|> all3 prefix all3s
-            :<|> sseS
+            :<|> sseS prefix
   where
     about = pure $ page' Nothing mempty (Result mempty) About
     stateFulStuff = serveStateHtml
