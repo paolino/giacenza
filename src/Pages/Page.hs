@@ -8,6 +8,7 @@ import Lucid
     , ToHtml (toHtml)
     , a_
     , body_
+    , button_
     , charset_
     , class_
     , content_
@@ -68,7 +69,7 @@ pageH prefix p body = html_ [term "data-bs-theme" "dark"]
                 $ pure ()
             term
                 "script"
-                [src_ "https://unpkg.com/htmx.org@1.9.4"
+                [ src_ "https://unpkg.com/htmx.org@1.9.4"
                 , integrity_ "sha384-zUfuhFKKZCbHTY6aRR46gxiqszMk5tcHjsVFxnUo8VMus4kHGVdIYVbOYYNlKmHV"
                 , crossorigin_ "anonymous"
                 ]
@@ -107,9 +108,21 @@ headH p prefix = do
                         [href_ $ prefix <> "/"]
                     )
                     "About"
+            li_ [class_ "nav-item"] $ do
+                button_
+                    [ class_ "btn btn-secondary"
+                    , term "hx-get" $ prefix <> "/file/event"
+                    , term "hx-swap" "none"
+                    ]
+                    $ do
+                        "Whats the time?"
             li_ [class_ "nav-item me-end"] $ do
-                div_ [term "hx-get" $ prefix <> "/time", term "hx-trigger" "load every 60s"] $ do
-                    pure ()
+                div_
+                    [ term "hx-get" $ prefix <> "/time"
+                    , term "hx-trigger" "test from:body"
+                    ]
+                    $ do
+                        pure ()
 
 page
     :: Maybe FileName

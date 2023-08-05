@@ -40,6 +40,62 @@ accordionH focus xs =
                         $ do
                             div_ [class_ "accordion-body d-md-flex w-100"] v
 
+fileStateH
+    :: Text
+    -> Map FileName Config
+    -> (FileName, [Text], Analysis)
+    -> Html ()
+fileStateH prefix cfg (filename@(FileName fn), header, analysis) =
+    case analysis of
+        FileAbsent -> do
+            centeredColumn 8
+                $ pure ()
+        NotDone -> do
+            centeredColumn 4
+                $ configure prefix fn header
+                $ Map.lookup filename cfg
+            centeredColumn 4
+                $ buttons
+                $ deleteFileH prefix fn
+        Configured config -> do
+            centeredColumn 4
+                $ renderConfiguration config
+            centeredColumn 4
+                $ reAnalyze fn prefix
+        Failed _ config -> do
+            centeredColumn 4
+                $ renderConfiguration config
+            centeredColumn 4
+                $ buttons
+                $ do
+                    reconfigureFileH prefix fn
+                    deleteFileH prefix fn
+        Success result config -> do
+            centeredColumn 4
+                $ renderConfiguration config
+            centeredColumn 4
+                $ resultH result
+            centeredColumn 4
+                $ buttons
+                $ do
+                    reconfigureFileH prefix fn
+                    deleteFileH prefix fn
+        Unconfigurable f -> do
+            centeredColumn 4
+                $ toHtml @Text
+                $ show f
+            centeredColumn 4
+                $ buttons
+                $ deleteFileH prefix fn
+
+refreshFileStateH :: Text -> Text -> Html () -> Html ()
+refreshFileStateH prefix fn =
+    div_
+        [ class_ "w-100"
+        , term "hx-get" $ prefix <> "/file/fragment?filename=" <> fn
+        , term "hx-trigger" "file-refresh"
+        ]
+
 listFilesH
     :: Maybe FileName
     -> Map FileName Config
@@ -51,7 +107,7 @@ listFilesH focus cfg prefix files sums = div_ [id_ "#listFiles"] do
     accordionH (focus >>= \fn -> elemIndex fn (files ^.. traverse . _1))
         $ let
             items = do
-                (filename@(FileName fn), header, analysis) <- files
+                status@(FileName fn, _, analysis) <- files
                 let k = do
                         case analysis of
                             FileAbsent -> do
@@ -68,49 +124,9 @@ listFilesH focus cfg prefix files sums = div_ [id_ "#listFiles"] do
                                 span_ [class_ "badge bg-danger ms-2 me-2"] "Unconfigurable"
 
                         span_ [] $ h5_ $ toHtml fn
-                    v = do
-                        case analysis of
-                            FileAbsent -> do
-                                centeredColumn 8
-                                    $ pure ()
-                            NotDone -> do
-                                centeredColumn 4
-                                    $ configure prefix fn header
-                                    $ Map.lookup filename cfg
-                                centeredColumn 4
-                                    $ buttons
-                                    $ deleteFileH prefix fn
-                            Configured config -> do
-                                centeredColumn 4
-                                    $ renderConfiguration config
-                                centeredColumn 4
-                                    $ reAnalyze fn prefix
-                            Failed _ config -> do
-                                centeredColumn 4
-                                    $ renderConfiguration config
-                                centeredColumn 4
-                                    $ buttons
-                                    $ do
-                                        reconfigureFileH prefix fn
-                                        deleteFileH prefix fn
-                            Success result config -> do
-                                centeredColumn 4
-                                    $ renderConfiguration config
-                                centeredColumn 4
-                                    $ resultH result
-                                centeredColumn 4
-                                    $ buttons
-                                    $ do
-                                        reconfigureFileH prefix fn
-                                        deleteFileH prefix fn
-                            Unconfigurable f -> do
-                                centeredColumn 4
-                                    $ toHtml @Text
-                                    $ show f
-                                centeredColumn 4
-                                    $ buttons
-                                    $ deleteFileH prefix fn
-
+                    v =
+                        refreshFileStateH prefix fn
+                            $ fileStateH prefix cfg status
                 pure (k, v)
             final =
                 ( h5_ [class_ "text-center"] $ toHtml @Text "Final report"

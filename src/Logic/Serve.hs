@@ -6,15 +6,40 @@ module Logic.Serve (serveStateHtml, StateHtml, mkSynchronicResponder) where
 import Compute (analyzer)
 import Control.Concurrent.STM (TVar, readTVarIO, writeTVar)
 import Data.List (lookup)
-import Data.Map qualified as Map (fromList)
+import Data.Map.Strict (differenceWith, keys)
+import Data.Map.Strict qualified as Map
 import Data.String (String)
+import Data.Text (intercalate)
 import Header (readCSVHeader)
-import Logic.Interpreter.Synchronous (ServerState, StateConfig, SynchronicState, WebState, interpretProductionEffects)
+import Logic.Interpreter.Synchronous
+    ( ServerState (..)
+    , SessionState (..)
+    , StateConfig
+    , SynchronicState
+    , WebState
+    , interpretProductionEffects
+    )
 import Logic.Language (getConfiguration, storeOldConfig)
-import Logic.Program (addFileP, analyzeFileP, configureFileP, deleteAllFilesP, deleteFileP, getOldConfigurations, listFilesP, notDonesOrFaileds, reconfigureAllFilesP, resetFileP, sumsP, withCurrentSession)
-import Pages.Types (HTML, Page (ListFiles), RawHtml)
+import Logic.Program
+    ( addFileP
+    , analyzeFileP
+    , configureFileP
+    , deleteAllFilesP
+    , deleteFileP
+    , fileP
+    , getOldConfigurations
+    , listFilesP
+    , notDonesOrFaileds
+    , reconfigureAllFilesP
+    , resetFileP
+    , sumsP
+    , withCurrentSession
+    )
+import Lucid (renderBS)
+import Pages.ListFiles (fileStateH)
+import Pages.Types (HTML, Page (ListFiles), RawHtml (..))
 import Polysemy (Sem)
-import Protolude hiding (Handler, State, get, gets, modify, put)
+import Protolude hiding (Handler, State, get, gets, intercalate, modify, put)
 import Servant
     ( FormUrlEncoded
     , Get
@@ -39,6 +64,7 @@ import Servant.Multipart
     , MultipartForm
     , Tmp
     )
+import Servant.Multipart qualified as Servant (files)
 import Types
     ( CSVLayer (CSVLayer)
     , Config (..)
@@ -57,7 +83,8 @@ import Web.Cookie
     )
 import Web.FormUrlEncoded (FromForm (..), parseUnique)
 
-type CookieResponse a = Headers '[Header "Set-Cookie" SetCookie] a
+type Events = Header "HX-Trigger" Text
+type CookieResponse a = Headers '[Header "Set-Cookie" SetCookie, Events] a
 
 type CookieRequest = Header "Cookie" Cookies'
 
@@ -75,7 +102,7 @@ data AddFileS = AddFileS
 instance FromMultipart Tmp [AddFileS] where
     fromMultipart :: MultipartData Tmp -> Either String [AddFileS]
     fromMultipart multipartData =
-        forM (files multipartData)
+        forM (Servant.files multipartData)
             $ \fd -> pure
                 $ AddFileS
                     do (FileName . fdFileName) fd
@@ -136,7 +163,10 @@ type StateHtml' =
             :> CookieResponseHtml Post
         :<|> "reconfigure-all"
             :> CookieResponseHtml Post
-
+        :<|> "event" :> CookieResponseHtml Get
+        :<|> "fragment"
+            :> QueryParam "filename" FileName
+            :> CookieResponseHtml Get
 
 type family Prepend f xs where
     Prepend q (f :<|> g) = (q :> f) :<|> Prepend q g
@@ -153,9 +183,11 @@ type Responder a =
 
 serveStateHtml
     :: (Maybe FileName -> Map FileName Config -> Result -> Page -> RawHtml)
+    -> Text
+    -- ^ prefix
     -> Responder RawHtml
     -> Server StateHtml
-serveStateHtml mkPage respond' =
+serveStateHtml mkPage prefix respond' =
     respondListFiles
         :<|> respondAddFiles
         :<|> respondConfigureFile
@@ -164,6 +196,8 @@ serveStateHtml mkPage respond' =
         :<|> respondDeleteFile
         :<|> respondDeleteAllFiles
         :<|> respondReconfigureAllFiles
+        :<|> respondEvent
+        :<|> respondFragment
   where
     listFilesPage focus = do
         cfgs <- Map.fromList <$> getOldConfigurations
@@ -209,6 +243,15 @@ serveStateHtml mkPage respond' =
     respondReconfigureAllFiles mc = respond' mc $ do
         reconfigureAllFilesP
         listFilesPage Nothing
+    respondEvent mc = respond' mc do
+        pure $ RawHtml ""
+    respondFragment mc (Just fn) = respond' mc do
+        cfgs <- Map.fromList <$> getOldConfigurations
+        status <- withCurrentSession $ fileP fn
+        pure $ RawHtml $ renderBS $ fileStateH prefix cfgs status
+    respondFragment mc Nothing = respond' mc do
+        pure $ RawHtml ""
+
 mkSynchronicResponder
     :: TVar (CookieGen, ServerState, WebState)
     -- ^ State variable
@@ -239,8 +282,17 @@ mkSynchronicResponder stateVar stateConfig mSetCookie f = do
         Left e -> throwError $ err500{errBody = show e} -- should be handled
         Right (newState, output) -> do
             case newcookie of
-                Just cookie ->
-                    pure (newState, addHeader (mkCookies cookie) output)
+                Just cookie -> do
+                    let changes = fromMaybe [] do
+                            oldCookie <- mCookie
+                            old <- Map.lookup oldCookie $ sessions oldState
+                            new <- Map.lookup cookie $ sessions newState
+                            pure $ filesChanged old new
+                    pure
+                        ( newState
+                        , addHeader (mkCookies cookie)
+                            $ addHeader (fileChangedEvents changes) output
+                        )
                 Nothing ->
                     panic "respondP: no cookie generated"
     -- write the new state
@@ -253,3 +305,16 @@ mkSynchronicResponder stateVar stateConfig mSetCookie f = do
             { setCookieName = "session"
             , setCookieValue = encodeUtf8 cookie
             }
+
+filesChanged :: SessionState -> SessionState -> [FileName]
+filesChanged (SessionState old) (SessionState new) =
+    keys
+        $ differenceWith
+            (\a b -> if a == b then Nothing else Just a)
+            new
+            old
+
+fileChangedEvents :: [FileName] -> Text
+fileChangedEvents fns =
+    intercalate ","
+        $ fmap (\fn -> "file-changed-" <> unFileName fn) fns

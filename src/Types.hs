@@ -85,7 +85,7 @@ data Failure
     | HeaderParseException String
     deriving (Eq, Show)
 
-newtype FileName = FileName Text
+newtype FileName = FileName {unFileName :: Text}
     deriving (Eq, Ord, Show, IsString, ToJSON)
 
 data CSVLayer = CSVLayer

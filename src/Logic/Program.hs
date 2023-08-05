@@ -95,22 +95,34 @@ deleteFileP' name = do
     deleteFilePath name'
     deleteFile name
 
+fileP
+    :: ( Member FileStorageE effs
+       , Member AnalyzerE effs
+       , Member SessionE effs
+       , Member GetCookieE effs
+       )
+    => FileName
+    -> Sem
+        effs
+        (FileName, [Text], Analysis)
+fileP name = do
+    name' <- uniqueFilename name
+    path <- getFilePath name'
+    cols <- header path
+    case cols of
+        Left err -> pure (name, [], Unconfigurable err)
+        Right cols' -> do
+            analysis <- getFile name
+            pure (name, cols', analysis)
+
 -- | List all files with their analysis status in the current session
 listFilesP
     :: forall r
      . Members '[GetCookieE, AnalyzerE, FileStorageE] r
     => Sem (StateEffs r) [(FileName, [Text], Analysis)]
-listFilesP = withCurrentSession $ do
-    files <- getFiles
-    forM files $ \name -> do
-        name' <- uniqueFilename name
-        path <- getFilePath name'
-        cols <- header path
-        case cols of
-            Left err -> pure (name, [], Unconfigurable err)
-            Right cols' -> do
-                analysis <- getFile name
-                pure (name, cols', analysis)
+listFilesP =
+    withCurrentSession
+        $ getFiles >>= mapM fileP
 
 -- | Analyze a file and store the result
 analyzeFileP
