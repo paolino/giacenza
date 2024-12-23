@@ -1,12 +1,17 @@
 packages: .
 
-with-compiler: ghc-9.4.5
 
 source-repository-package
     type: git
     location: https://github.com/paolino/streaming-cassava
     tag:  a6ae5b03c6b2924d2a3c672fd666474aa0023f45
+    --sha256: sha256-UvbSKFgU7NlhnnBJg7TbRu8nsCPzgE6OGZwRKwCe670=
 source-repository-package
     type: git
     location: https://github.com/paolino/streaming-with
     tag:  a510193b661737321d8cf51923a28076f7c6f17f
+    --sha256: sha256-0HGTOgmuQlZSryKoGlg6nANlZ7S9IKQY6ezifZLHkgk=
+
+allow-newer:
+    streaming-cassava:transformers, mtl
+    , streaming-with:streaming-bytestring, transformers

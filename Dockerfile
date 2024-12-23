@@ -1,12 +1,8 @@
-from haskell:9.4.5-buster as build
-RUN cabal update
-COPY . /opt/giacenza
-WORKDIR /opt/giacenza
-RUN cabal install -j --installdir=. --install-method=copy
+FROM alpine:latest
 
-from debian:buster
-RUN apt-get update && apt-get install -y \
-  ca-certificates \
-  libgmp-dev
-COPY --from=build /opt/giacenza/giacenza /usr/bin/giacenza
-CMD ["giacenza"]
+WORKDIR /app
+
+# Copy /nix/store
+COPY ./tmp /nix/store
+COPY ./tmp/giacenza /app
+CMD ["/app/giacenza"]

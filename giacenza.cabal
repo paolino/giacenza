@@ -71,7 +71,7 @@ library
       src
   ghc-options: -O2 -Wall
   build-depends:
-      base >=4.7 && <5
+      base
     , aeson
     , attoparsec
     , bytestring
@@ -119,7 +119,7 @@ executable giacenza
       app
   ghc-options: -Wall -threaded -rtsopts -with-rtsopts=-N -O2
   build-depends:
-      base >=4.7 && <5
+      base
     , bytestring
     , cassava
     , containers
@@ -169,7 +169,7 @@ test-suite giacenza-test
       test
   ghc-options: -Wall -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      base >=4.7 && <5
+      base
     , bytestring
     , cassava
     , containers

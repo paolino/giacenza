@@ -2,3 +2,6 @@
 statements
 dist-newstyle
 docker/giacenza
+tmp/
+.direnv
+result

@@ -3,7 +3,7 @@ module Header (readCSVHeader) where
 import Protolude
 
 import Data.Attoparsec.ByteString (parseOnly)
-import Data.ByteString (hGetLine)
+import Data.ByteString.Char8 (hGetLine)
 import Data.Csv.Parser (header)
 import System.IO (withBinaryFile)
 import Types (Failure (HeaderParseException), Header)
