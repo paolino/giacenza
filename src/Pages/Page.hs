@@ -127,7 +127,7 @@ footerH =
             div_ [class_ "col d-md-flex align-items-center"]
                 $ do
                     ul_ [class_ "nav flex-column"] $ do
-                        li_ [class_ "nav-item mb-2"] "© 2023 Paolo Veronelli, Lambdasistemi"
+                        li_ [class_ "nav-item mb-2"] "© 2023-2026 Paolo Veronelli, Lambdasistemi"
                         li_ [class_ "nav-item mb-2"] $ do
                             span_ "Source code on "
                             a_

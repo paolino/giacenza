@@ -33,3 +33,11 @@ clean-build:
 run-docker:
   just build
   docker compose up
+
+# build mkdocs site
+build-docs:
+  mkdocs build
+
+# serve mkdocs site locally
+serve-docs:
+  mkdocs serve

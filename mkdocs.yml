@@ -1,0 +1,20 @@
+site_name: Giacenza
+site_url: https://paolino.github.io/giacenza/
+repo_url: https://github.com/paolino/giacenza
+repo_name: paolino/giacenza
+
+theme:
+  name: material
+  palette:
+    scheme: slate
+    primary: indigo
+    accent: indigo
+
+markdown_extensions:
+  - admonition
+  - pymdownx.highlight
+  - pymdownx.superfences
+
+nav:
+  - Home: index.md
+  - Tutorial: tutorial.md

@@ -2,31 +2,21 @@ module Pages.About where
 
 import Lucid
     ( Html
+    , a_
     , h5_
-    , li_
+    , href_
     , p_
-    , ul_
     )
 import Protolude hiding (for_)
 
+-- | Render the about section with a link to the documentation site.
 aboutH :: Html ()
 aboutH = do
-    h5_
-        "About"
+    h5_ "About"
     p_
-        "This is a simple web application to compute the average deposit and the end of the year balance \
-        \ of a bank account from a csv file.The average deposit is the daily average of the deposit. \
-        \ The balance is the deposited value at the last day of the year."
-    ul_ $ do
-        li_
-            "The csv file must have a header with the date and the amount fields, with names chosen \
-            \ in the form and must contain all the movements of the account history."
-        li_ "The date field must be in the format dd-mm-yyyy."
-        li_
-            "The amount field must be a number, with the decimal separator chosen in the form."
-
-    p_
-        "The result is a table with the average deposit and the balance for each year."
-    p_
-        "This page use a cookie to store your data and preferences. The cookie is not used for any other purpose."
-    p_ "Deleting the cookie will delete all your data and preferences."
+        "Giacenza computes the average daily deposit (giacenza media) and the \
+        \end-of-year balance (saldo) of a bank account from CSV transaction files."
+    p_ $ do
+        "For detailed usage instructions and a step-by-step tutorial, visit the "
+        a_ [href_ "https://paolino.github.io/giacenza/"] "documentation"
+        "."
