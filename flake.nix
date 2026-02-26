@@ -3,7 +3,8 @@
   inputs.haskellNix.url = "github:input-output-hk/haskell.nix";
   inputs.nixpkgs.follows = "haskellNix/nixpkgs-unstable";
   inputs.flake-utils.url = "github:numtide/flake-utils";
-  outputs = { self, nixpkgs, flake-utils, haskellNix }:
+  inputs.dev-assets-mkdocs.url = "github:paolino/dev-assets?dir=mkdocs";
+  outputs = { self, nixpkgs, flake-utils, haskellNix, dev-assets-mkdocs }:
     let
       supportedSystems = [
         "x86_64-linux"
@@ -23,10 +24,13 @@
         ];
         pkgs = import nixpkgs { inherit system overlays; inherit (haskellNix) config; };
         flake = pkgs.hixProject.flake {};
+        mkdocs = dev-assets-mkdocs.packages.${system}.default;
       in flake // {
         legacyPackages = pkgs;
         packages.default = flake.packages."giacenza:exe:giacenza";
-
+        devShells.default = flake.devShells.default.overrideAttrs (old: {
+          buildInputs = (old.buildInputs or []) ++ [ mkdocs ];
+        });
       });
 
   # --- Flake Local Nix Configuration ----------------------------
