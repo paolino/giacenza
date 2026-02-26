@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: paolino/dev-assets/setup-nix@v0.0.1
+        with:
+          cachix-auth-token: "${{ secrets.CACHIX_AUTH_TOKEN }}"
+
+      - name: Build
+        run: nix develop --quiet -c cabal build -O0
+
+      - name: Fourmolu
+        run: nix develop --quiet -c fourmolu --mode check .
+
+      - name: HLint
+        run: nix develop --quiet -c hlint .
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build docs
+        run: nix develop github:paolino/dev-assets?dir=mkdocs --quiet -c mkdocs build
