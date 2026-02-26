@@ -19,8 +19,7 @@ import Network.Wai.Parse (defaultParseRequestBodyOptions, setMaxRequestFileSize,
 import Pages.Page qualified as Page
 import Pages.Types
     ( HTML
-    , Page (..)
-    , RawHtml
+    , RawHtml (RawHtml)
     )
 import Protolude hiding (Handler)
 import Servant
@@ -30,7 +29,11 @@ import Servant
     , (:<|>) (..)
     )
 import Servant.API
-    ( Get
+    ( Header
+    , Headers
+    , StdMethod (GET)
+    , Verb
+    , addHeader
     )
 import Servant.Multipart
     ( MultipartOptions (generalOptions)
@@ -50,8 +53,10 @@ import Types
     , StoragePath (..)
     )
 
+type Redirect = Verb 'GET 302 '[HTML] (Headers '[Header "Location" Text] RawHtml)
+
 type API =
-    Get '[HTML] RawHtml
+    Redirect
         :<|> StateHtml
 
 type StateVar = TVar (CookieGen, ServerState, WebState)
@@ -60,7 +65,7 @@ app :: StateVar -> Text -> Application
 app stateVar prefix =
     serveWithContext (Proxy @API) context $ about :<|> stateFulStuff
   where
-    about = pure $ page' Nothing mempty (Result mempty) About
+    about = pure $ addHeader (prefix <> "/file/all") (RawHtml mempty)
     stateFulStuff = serveStateHtml
         do page'
         do
