@@ -30,8 +30,7 @@ data Feedback = Feedback
     deriving (Eq, Show)
 
 data Page
-    = About
-    | ListFiles [(FileName, [Text], Analysis)]
+    = ListFiles [(FileName, [Text], Analysis)]
     | AddFile
     deriving (Eq)
 

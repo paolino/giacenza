@@ -31,13 +31,11 @@ import Lucid
     , title_
     , ul_
     )
-import Pages.About (aboutH)
 import Pages.AddFile (addFileH)
 import Pages.ListFiles (listFilesH)
 import Pages.Types
     ( Page (..)
     , RawHtml (RawHtml)
-    , _About
     , _ListFiles
     )
 import Protolude hiding (for_)
@@ -97,11 +95,8 @@ headH p prefix = do
                     "Statements"
             li_ [class_ "nav-item"] $ do
                 a_
-                    ( activePageH
-                        (is _About p)
-                        [href_ $ prefix <> "/"]
-                    )
-                    "About"
+                    [class_ "nav-link", href_ "https://paolino.github.io/giacenza/"]
+                    "Docs"
 
 page
     :: Maybe FileName
@@ -111,7 +106,6 @@ page
     -> Page
     -> RawHtml
 page focus mcfg sums prefix p = RawHtml $ renderBS $ case p of
-    About -> pageH prefix p aboutH
     ListFiles as -> pageH prefix p $ do
         listFilesH focus mcfg prefix as sums
     AddFile -> pageH prefix p $ addFileH prefix

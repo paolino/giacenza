@@ -54,7 +54,6 @@ library
       Logic.Language
       Logic.Serve
       Logic.Program
-      Pages.About
       Pages.Form
       Pages.Page
       Pages.Result
