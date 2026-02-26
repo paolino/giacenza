@@ -36,8 +36,8 @@ run-docker:
 
 # build mkdocs site
 build-docs:
-  mkdocs build
+  nix develop github:paolino/dev-assets?dir=mkdocs --quiet -c mkdocs build
 
 # serve mkdocs site locally
 serve-docs:
-  mkdocs serve
+  nix develop github:paolino/dev-assets?dir=mkdocs --quiet -c mkdocs serve
